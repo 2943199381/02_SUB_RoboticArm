@@ -1,0 +1,5 @@
+arm_controller_node:
+  ros__parameters:
+    control_hz: 500.0
+    kp: [10.0, 20.0, 20.0, 0.5]
+    kd: [20.0, 20.0, 20.0, 0.1]
