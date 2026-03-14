@@ -3,8 +3,6 @@ trajectory_bspline_jerk_planner_node:
     payload_attached_topic: /payload_attached
     payload_attached_initial: false
     planner_hz: 500.0
-    hold_last_state: true
-
     max_cartesian_speed_empty: 0.5
     max_cartesian_speed_payload: 0.35
     max_cartesian_acceleration_accel_empty: 0.5

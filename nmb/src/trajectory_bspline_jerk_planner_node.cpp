@@ -20,7 +20,6 @@ public:
   : Node("trajectory_bspline_jerk_planner_node")
   {
     planner_hz_ = std::max(1.0, declare_parameter<double>("planner_hz", 500.0));
-    hold_last_state_ = declare_parameter<bool>("hold_last_state", true);
     path_frame_ = declare_parameter<std::string>("path_frame", "base_link");
     path_marker_topic_ = declare_parameter<std::string>("path_marker_topic", "/planned_cartesian_curve");
     payload_attached_topic_ = declare_parameter<std::string>("payload_attached_topic", "/payload_attached");
@@ -871,7 +870,7 @@ private:
     payload_attached_ = msg->data;
     clear_planned_path(true);
     has_last_sample_ = false;
-    waiting_for_task_frame_sync_ = hold_last_state_;
+    waiting_for_task_frame_sync_ = true;
 
     RCLCPP_INFO(
       get_logger(),
@@ -882,7 +881,7 @@ private:
   void planner_loop()
   {
     if (!trajectory_active_) {
-      if (hold_last_state_ && has_last_sample_) {
+      if (has_last_sample_) {
         publish_cartesian_state(last_sample_);
       }
       return;
@@ -977,7 +976,6 @@ private:
 private:
   double planner_hz_ {500.0};
   double plan_dt_ {1.0 / 500.0};
-  bool hold_last_state_ {true};
   std::string path_frame_ {"base_link"};
   std::string path_marker_topic_ {"/planned_cartesian_curve"};
   std::string payload_attached_topic_ {"/payload_attached"};
