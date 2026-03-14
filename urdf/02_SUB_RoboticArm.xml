@@ -15,10 +15,34 @@
     <exclude body1="l1" body2="l2"/>
     <exclude body1="l2" body2="l3"/>
     <exclude body1="l3" body2="l4"/>
+    <exclude body1="base_link" body2="payload_center_link"/>
+    <exclude body1="l1" body2="payload_center_link"/>
+    <exclude body1="l2" body2="payload_center_link"/>
+    <exclude body1="l3" body2="payload_center_link"/>
+    <exclude body1="l4" body2="payload_center_link"/>
+    <exclude body1="ee_link" body2="payload_center_link"/>
   </contact>
 
+  <equality>
+    <weld
+      name="payload_weld"
+      site1="ee_payload_center_site"
+      site2="payload_grasp_site"
+      active="false"
+      solref="0.004 1"
+      solimp="0.99 0.999 0.0001"/>
+  </equality>
+
   <worldbody>
-    <geom name="ground" type="box" pos="0 0 -0.01" size="5 5 0.01" rgba="0.4 0.4 0.4 1" contype="0" conaffinity="0"/>
+    <geom
+      name="ground"
+      type="plane"
+      pos="0 0 -0.16"
+      size="5 5 0.1"
+      rgba="0.4 0.4 0.4 1"
+      contype="1"
+      conaffinity="1"
+      friction="1.0 0.05 0.01"/>
     <body name="base_link" pos="0 0 0"> 
       <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.298039 0.298039 0.298039 1" mesh="base_link"/>
       <geom type="mesh" contype="0" conaffinity="0" rgba="0.298039 0.298039 0.298039 1" mesh="base_link"/>
@@ -26,29 +50,54 @@
         <inertial pos="-0.0021817 0.009549 0.0424398" quat="-0.224231 0.683618 -0.229243 0.655618" mass="0.445365" diaginertia="0.000495106 0.000494858 0.000349475"/>
         <joint name="j1" pos="0 0 0" axis="0 0 -1"/>
         <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="1 1 1 1" mesh="l1"/>
-        <geom type="mesh" rgba="1 1 1 1" mesh="l1"/>
+        <geom type="mesh" contype="0" conaffinity="0" rgba="1 1 1 1" mesh="l1"/>
         <body name="l2" pos="0 0.0573 0.071">
           <inertial pos="-0.0961211 -0.0492048 0.152551" quat="0.686176 -0.191017 -0.190799 0.675479" mass="0.66067" diaginertia="0.00510695 0.00499524 0.000208333"/>
           <joint name="j2" pos="0 0 0" axis="0 1 0"/>
           <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.792157 0.819608 0.933333 1" mesh="l2"/>
-          <geom type="mesh" rgba="0.792157 0.819608 0.933333 1" mesh="l2"/>
+          <geom type="mesh" contype="0" conaffinity="0" rgba="0.792157 0.819608 0.933333 1" mesh="l2"/>
           <body name="l3" pos="-0.229899 -0.0025 0.375162">
             <inertial pos="0.179461 -0.0547823 -0.119425" quat="-4.04863e-05 0.881243 -0.00158765 0.472661" mass="0.366439" diaginertia="0.000848879 0.000835934 9.95032e-05"/>
             <joint name="j3" pos="0 0 0" axis="0 -1 0"/>
             <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.898039 0.917647 0.929412 1" mesh="l3"/>
-            <geom type="mesh" rgba="0.898039 0.917647 0.929412 1" mesh="l3"/>
+            <geom type="mesh" contype="0" conaffinity="0" rgba="0.898039 0.917647 0.929412 1" mesh="l3"/>
             <body name="l4" pos="0.329385 -0.0273 -0.218015" quat="0.707107 0.707107 0 0">
               <inertial pos="0.0124065 -0.0173866 0.0296216" quat="0.0435172 0.705766 -0.0435234 0.705766" mass="0.0723669" diaginertia="1.33062e-05 1.26717e-05 4.81229e-06"/>
               <joint name="j4" pos="0 0 0" axis="0 0 -1"/>
               <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="1 1 1 1" mesh="l4"/>
-              <geom type="mesh" rgba="1 1 1 1" mesh="l4"/>
+              <geom type="mesh" contype="0" conaffinity="0" rgba="1 1 1 1" mesh="l4"/>
               <body name="ee_link" pos="0.015 -0.04 0.028" quat="0.707107 0 0.707107 0">
                 <geom type="cylinder" size="0.01 0.02" contype="0" conaffinity="0" group="1" density="0" rgba="0.9 0.2 0.2 1"/>
+                <site
+                  name="ee_payload_center_site"
+                  pos="0 0 0"
+                  size="0.01"
+                  rgba="0.1 0.9 0.1 0.2"/>
               </body>
             </body>
           </body>
         </body>
       </body>
+    </body>
+
+    <body name="payload_center_link" pos="0.30 0.00 0.015">
+      <freejoint name="payload_freejoint"/>
+      <inertial pos="0 0 0" quat="1 0 0 0" mass="0.63" diaginertia="0.0128625 0.0128625 0.0128625"/>
+      <site
+        name="payload_grasp_site"
+        pos="0 0.175 0"
+        size="0.01"
+        rgba="0.9 0.1 0.1 0.2"/>
+      <geom
+        name="payload_box_geom"
+        type="box"
+        size="0.175 0.175 0.175"
+        contype="1"
+        conaffinity="1"
+        group="1"
+        density="0"
+        friction="1.0 0.05 0.01"
+        rgba="0.75 0.55 0.25 0.6"/>
     </body>
   </worldbody>
 </mujoco>

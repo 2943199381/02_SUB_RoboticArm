@@ -1,5 +1,15 @@
 arm_controller_node:
   ros__parameters:
+    payload_attached_topic: /payload_attached
+    payload_attached_initial: false
+    model_transition_cmd_topic: /arm_model_transition_cmd
+    model_blend_status_topic: /arm_model_blend_status
+    pd_task_wrench_topic: /arm_pd_task_wrench
+    task_frame_empty: ee_link
+    task_frame_payload: payload_center_link
     control_hz: 500.0
-    kp: [10.0, 20.0, 20.0, 0.5]
-    kd: [20.0, 20.0, 20.0, 0.1]
+    initial_hold_q: [0.0, 0.0, 0.0, 0.0]
+    kp: [20.0, 40.0, 40.0, 1.0]
+    kd: [40.0, 40.0, 40.0, 0.1]
+    model_blend_duration_sec: 0.5
+    wrench_damping: 0.001

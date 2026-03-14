@@ -1,23 +1,15 @@
 trajectory_bspline_jerk_planner_node:
   ros__parameters:
+    payload_attached_topic: /payload_attached
+    payload_attached_initial: false
     planner_hz: 500.0
     hold_last_state: true
 
-    max_cartesian_velocity: [0.3, 0.3, 0.3, 1.0]
-    max_cartesian_acceleration: [0.3, 0.3, 0.3, 1.0]
-    max_cartesian_acceleration_accel: [0.3, 0.3, 0.3, 1.0]
-    max_cartesian_acceleration_decel: [0.18, 0.18, 0.18, 0.6]
-    max_cartesian_jerk: [5.0, 5.0, 5.0, 10.0]
-    max_cartesian_jerk_accel: [5.0, 5.0, 5.0, 10.0]
-    max_cartesian_jerk_decel: [2.5, 2.5, 2.5, 5.0]
+    max_cartesian_speed: 0.3
+    max_cartesian_acceleration_accel: 0.2
+    max_cartesian_acceleration_decel: 0.1
+    max_cartesian_jerk_accel: 5.0
+    max_cartesian_jerk_decel: 2.5
 
-    scalar_velocity_limit: 0.5
-    scalar_acceleration_limit: 0.5
-    scalar_acceleration_limit_accel: 0.5
-    scalar_acceleration_limit_decel: 0.3
-    scalar_jerk_limit: 5.0
-    scalar_jerk_limit_accel: 5.0
-    scalar_jerk_limit_decel: 2.5
-    deceleration_distance_scale: 1.8
     derivative_step: 0.001
     max_planning_steps: 60000

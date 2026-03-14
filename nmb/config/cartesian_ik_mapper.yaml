@@ -1,5 +1,9 @@
 cartesian_ik_mapper_node:
   ros__parameters:
+    payload_attached_topic: /payload_attached
+    payload_attached_initial: false
+    task_frame_empty: ee_link
+    task_frame_payload: payload_center_link
     ik_hz: 500.0
     ik_max_iters: 200
     ik_tolerance: 1e-3

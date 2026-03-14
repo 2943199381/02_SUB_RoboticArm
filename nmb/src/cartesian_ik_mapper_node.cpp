@@ -8,6 +8,7 @@
 #include <Eigen/Dense>
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
+#include "std_msgs/msg/bool.hpp"
 #include "std_msgs/msg/float64_multi_array.hpp"
 
 #if __has_include(<pinocchio/algorithm/frames.hpp>) && \
@@ -29,8 +30,14 @@ public:
   CartesianIkMapperNode()
   : Node("cartesian_ik_mapper_node")
   {
-    urdf_path_ = declare_parameter<std::string>("urdf_path", "");
-    ee_frame_ = declare_parameter<std::string>("ee_frame", "ee_link");
+    const std::string legacy_urdf_path = declare_parameter<std::string>("urdf_path", "");
+    const std::string legacy_task_frame = declare_parameter<std::string>("ee_frame", "ee_link");
+    urdf_path_empty_ = declare_parameter<std::string>("urdf_path_empty", legacy_urdf_path);
+    urdf_path_payload_ = declare_parameter<std::string>("urdf_path_payload", urdf_path_empty_);
+    task_frame_empty_ = declare_parameter<std::string>("task_frame_empty", legacy_task_frame);
+    task_frame_payload_ = declare_parameter<std::string>("task_frame_payload", task_frame_empty_);
+    payload_attached_topic_ = declare_parameter<std::string>("payload_attached_topic", "/payload_attached");
+    payload_attached_ = declare_parameter<bool>("payload_attached_initial", false);
 
     ik_hz_ = std::max(1.0, declare_parameter<double>("ik_hz", 500.0));
     dt_ = 1.0 / ik_hz_;
@@ -65,7 +72,6 @@ public:
     max_joint_velocity_ = vector_param_to_eigen4(max_joint_vel_param, 1.5, 1e-5);
     max_joint_acceleration_ = vector_param_to_eigen4(max_joint_acc_param, 3.0, 1e-5);
 
-    // Hard-coded topics by request.
     joint_state_sub_ = create_subscription<sensor_msgs::msg::JointState>(
       "/joint_states", 10,
       std::bind(&CartesianIkMapperNode::on_joint_state, this, std::placeholders::_1));
@@ -74,18 +80,24 @@ public:
       "/planned_cartesian_state", 100,
       std::bind(&CartesianIkMapperNode::on_planned_cartesian_state, this, std::placeholders::_1));
 
+    payload_state_sub_ = create_subscription<std_msgs::msg::Bool>(
+      payload_attached_topic_, 10,
+      std::bind(&CartesianIkMapperNode::on_payload_attached, this, std::placeholders::_1));
+
     planned_joint_pub_ = create_publisher<sensor_msgs::msg::JointState>("/planned_joint_state", 100);
 
 #if NMB_HAS_PINOCCHIO
-    try_load_pinocchio_model();
+    load_pinocchio_context(empty_context_, "empty", urdf_path_empty_, task_frame_empty_);
+    load_pinocchio_context(payload_context_, "payload", urdf_path_payload_, task_frame_payload_);
+    log_active_context();
 #else
     RCLCPP_WARN(get_logger(), "Pinocchio headers not found. IK mapper disabled.");
 #endif
 
     RCLCPP_INFO(
       get_logger(),
-      "cartesian_ik_mapper_node started. input=/planned_cartesian_state output=/planned_joint_state ik_hz=%.1f dt=%.6f",
-      ik_hz_, dt_);
+      "cartesian_ik_mapper_node started. input=/planned_cartesian_state output=/planned_joint_state ik_hz=%.1f dt=%.6f payload_topic=%s",
+      ik_hz_, dt_, payload_attached_topic_.c_str());
   }
 
 private:
@@ -124,23 +136,116 @@ private:
   }
 
 #if NMB_HAS_PINOCCHIO
+  struct ModelContext
+  {
+    std::string label;
+    std::string urdf_path;
+    std::string task_frame;
+    mutable pinocchio::Model model;
+    mutable std::unique_ptr<pinocchio::Data> data;
+    pinocchio::FrameIndex frame_id {0};
+    bool loaded {false};
+    double pitch_reference_rad {0.0};
+  };
+
   static double raw_pitch_from_rotation(const Eigen::Matrix3d & r)
   {
     return std::atan2(r(2, 1), r(2, 2));
   }
 
-  bool compute_task_jacobian(const Eigen::Vector4d & q, Eigen::Matrix4d & J) const
+  bool load_pinocchio_context(
+    ModelContext & ctx,
+    const std::string & label,
+    const std::string & urdf_path,
+    const std::string & task_frame)
   {
-    pinocchio::forwardKinematics(pinocchio_model_, *pinocchio_data_, q);
-    pinocchio::updateFramePlacements(pinocchio_model_, *pinocchio_data_);
+    ctx.label = label;
+    ctx.urdf_path = urdf_path;
+    ctx.task_frame = task_frame;
+    ctx.loaded = false;
+    ctx.data.reset();
 
-    pinocchio::computeJointJacobians(pinocchio_model_, *pinocchio_data_, q);
+    if (ctx.urdf_path.empty()) {
+      RCLCPP_WARN(get_logger(), "IK context '%s' has empty urdf path.", label.c_str());
+      return false;
+    }
+
+    try {
+      pinocchio::urdf::buildModel(ctx.urdf_path, ctx.model);
+      ctx.data = std::make_unique<pinocchio::Data>(ctx.model);
+      ctx.frame_id = ctx.model.getFrameId(ctx.task_frame);
+      if (ctx.frame_id >= ctx.model.frames.size()) {
+        RCLCPP_ERROR(
+          get_logger(), "IK context '%s' frame '%s' not found in URDF '%s'.",
+          label.c_str(), ctx.task_frame.c_str(), ctx.urdf_path.c_str());
+        return false;
+      }
+
+      if (ctx.model.nq != kDof || ctx.model.nv != kDof) {
+        RCLCPP_ERROR(
+          get_logger(),
+          "IK context '%s' requires nq=nv=%d, got nq=%d nv=%d.",
+          label.c_str(), kDof, ctx.model.nq, ctx.model.nv);
+        return false;
+      }
+
+      const Eigen::Vector4d q_zero = Eigen::Vector4d::Zero();
+      pinocchio::forwardKinematics(ctx.model, *ctx.data, q_zero);
+      pinocchio::updateFramePlacements(ctx.model, *ctx.data);
+      ctx.pitch_reference_rad =
+        raw_pitch_from_rotation(ctx.data->oMf[ctx.frame_id].rotation());
+      ctx.loaded = true;
+
+      RCLCPP_INFO(
+        get_logger(), "IK context '%s' loaded. urdf=%s task_frame=%s",
+        ctx.label.c_str(), ctx.urdf_path.c_str(), ctx.task_frame.c_str());
+      return true;
+    } catch (const std::exception & e) {
+      RCLCPP_ERROR(
+        get_logger(), "Failed to load IK context '%s': %s",
+        label.c_str(), e.what());
+      return false;
+    }
+  }
+
+  const ModelContext * active_context() const
+  {
+    if (payload_attached_ && payload_context_.loaded) {
+      return &payload_context_;
+    }
+    if (empty_context_.loaded) {
+      return &empty_context_;
+    }
+    if (payload_context_.loaded) {
+      return &payload_context_;
+    }
+    return nullptr;
+  }
+
+  void log_active_context() const
+  {
+    const auto * ctx = active_context();
+    if (!ctx) {
+      RCLCPP_WARN(get_logger(), "No valid IK context loaded.");
+      return;
+    }
+    RCLCPP_INFO(
+      get_logger(), "IK active context=%s task_frame=%s payload_attached=%s",
+      ctx->label.c_str(), ctx->task_frame.c_str(), payload_attached_ ? "true" : "false");
+  }
+
+  bool compute_task_jacobian(const ModelContext & ctx, const Eigen::Vector4d & q, Eigen::Matrix4d & J) const
+  {
+    pinocchio::forwardKinematics(ctx.model, *ctx.data, q);
+    pinocchio::updateFramePlacements(ctx.model, *ctx.data);
+
+    pinocchio::computeJointJacobians(ctx.model, *ctx.data, q);
     Eigen::Matrix<double, 6, 4> J6_world_aligned = Eigen::Matrix<double, 6, 4>::Zero();
     Eigen::Matrix<double, 6, 4> J6_local = Eigen::Matrix<double, 6, 4>::Zero();
     pinocchio::getFrameJacobian(
-      pinocchio_model_, *pinocchio_data_, ee_frame_id_, pinocchio::LOCAL_WORLD_ALIGNED, J6_world_aligned);
+      ctx.model, *ctx.data, ctx.frame_id, pinocchio::LOCAL_WORLD_ALIGNED, J6_world_aligned);
     pinocchio::getFrameJacobian(
-      pinocchio_model_, *pinocchio_data_, ee_frame_id_, pinocchio::LOCAL, J6_local);
+      ctx.model, *ctx.data, ctx.frame_id, pinocchio::LOCAL, J6_local);
 
     J.setZero();
     J.topRows<3>() = J6_world_aligned.topRows<3>();
@@ -149,18 +254,19 @@ private:
   }
 
   bool compute_task_bias_acceleration(
+    const ModelContext & ctx,
     const Eigen::Vector4d & q,
     const Eigen::Vector4d & qdot,
     Eigen::Vector4d & out_jdot_qdot) const
   {
     const Eigen::Vector4d zero_acc = Eigen::Vector4d::Zero();
-    pinocchio::forwardKinematics(pinocchio_model_, *pinocchio_data_, q, qdot, zero_acc);
-    pinocchio::updateFramePlacements(pinocchio_model_, *pinocchio_data_);
+    pinocchio::forwardKinematics(ctx.model, *ctx.data, q, qdot, zero_acc);
+    pinocchio::updateFramePlacements(ctx.model, *ctx.data);
 
     const auto bias_world_aligned = pinocchio::getFrameClassicalAcceleration(
-      pinocchio_model_, *pinocchio_data_, ee_frame_id_, pinocchio::LOCAL_WORLD_ALIGNED);
+      ctx.model, *ctx.data, ctx.frame_id, pinocchio::LOCAL_WORLD_ALIGNED);
     const auto bias_local = pinocchio::getFrameClassicalAcceleration(
-      pinocchio_model_, *pinocchio_data_, ee_frame_id_, pinocchio::LOCAL);
+      ctx.model, *ctx.data, ctx.frame_id, pinocchio::LOCAL);
 
     out_jdot_qdot.setZero();
     out_jdot_qdot.head<3>() = bias_world_aligned.linear();
@@ -168,11 +274,11 @@ private:
     return out_jdot_qdot.allFinite();
   }
 
-  void clamp_to_joint_limits(Eigen::Vector4d & q_vec) const
+  void clamp_to_joint_limits(const ModelContext & ctx, Eigen::Vector4d & q_vec) const
   {
     for (int i = 0; i < kDof; ++i) {
-      double lo = pinocchio_model_.lowerPositionLimit(i);
-      double hi = pinocchio_model_.upperPositionLimit(i);
+      double lo = ctx.model.lowerPositionLimit(i);
+      double hi = ctx.model.upperPositionLimit(i);
       const double lo_cfg = ik_joint_lower_limits_(i);
       const double hi_cfg = ik_joint_upper_limits_(i);
 
@@ -194,6 +300,7 @@ private:
   }
 
   bool solve_ik_iterative(
+    const ModelContext & ctx,
     const CartesianState & target,
     const Eigen::Vector4d & seed_q,
     Eigen::Vector4d & out_q,
@@ -201,19 +308,20 @@ private:
     double & out_pitch_err) const
   {
     Eigen::Vector4d q_vec = seed_q;
-    clamp_to_joint_limits(q_vec);
+    clamp_to_joint_limits(ctx, q_vec);
 
     const Eigen::Vector3d target_pos(target.p(0), target.p(1), target.p(2));
     const double lambda = std::max(1e-9, ik_damping_);
 
     bool converged = false;
     for (int iter = 0; iter < ik_max_iters_; ++iter) {
-      pinocchio::forwardKinematics(pinocchio_model_, *pinocchio_data_, q_vec);
-      pinocchio::updateFramePlacements(pinocchio_model_, *pinocchio_data_);
+      pinocchio::forwardKinematics(ctx.model, *ctx.data, q_vec);
+      pinocchio::updateFramePlacements(ctx.model, *ctx.data);
 
-      const auto & frame = pinocchio_data_->oMf[ee_frame_id_];
+      const auto & frame = ctx.data->oMf[ctx.frame_id];
       const Eigen::Vector3d pos_err_vec = target_pos - frame.translation();
-      const double current_pitch = wrap_to_pi(raw_pitch_from_rotation(frame.rotation()) - ik_pitch_reference_rad_);
+      const double current_pitch =
+        wrap_to_pi(raw_pitch_from_rotation(frame.rotation()) - ctx.pitch_reference_rad);
       const double pitch_err = wrap_to_pi(target.p(3) - current_pitch);
 
       out_pos_err = pos_err_vec.norm();
@@ -224,13 +332,13 @@ private:
         break;
       }
 
-      pinocchio::computeJointJacobians(pinocchio_model_, *pinocchio_data_, q_vec);
+      pinocchio::computeJointJacobians(ctx.model, *ctx.data, q_vec);
       Eigen::Matrix<double, 6, 4> J6_world_aligned = Eigen::Matrix<double, 6, 4>::Zero();
       Eigen::Matrix<double, 6, 4> J6_local = Eigen::Matrix<double, 6, 4>::Zero();
       pinocchio::getFrameJacobian(
-        pinocchio_model_, *pinocchio_data_, ee_frame_id_, pinocchio::LOCAL_WORLD_ALIGNED, J6_world_aligned);
+        ctx.model, *ctx.data, ctx.frame_id, pinocchio::LOCAL_WORLD_ALIGNED, J6_world_aligned);
       pinocchio::getFrameJacobian(
-        pinocchio_model_, *pinocchio_data_, ee_frame_id_, pinocchio::LOCAL, J6_local);
+        ctx.model, *ctx.data, ctx.frame_id, pinocchio::LOCAL, J6_local);
 
       Eigen::Matrix4d J = Eigen::Matrix4d::Zero();
       J.topRows<3>() = J6_world_aligned.topRows<3>();
@@ -254,50 +362,11 @@ private:
       }
 
       q_vec += dq;
-      clamp_to_joint_limits(q_vec);
+      clamp_to_joint_limits(ctx, q_vec);
     }
 
     out_q = q_vec;
     return converged;
-  }
-
-  void try_load_pinocchio_model()
-  {
-    if (urdf_path_.empty()) {
-      RCLCPP_WARN(get_logger(), "Parameter urdf_path is empty, IK disabled.");
-      return;
-    }
-
-    try {
-      pinocchio::urdf::buildModel(urdf_path_, pinocchio_model_);
-      pinocchio_data_ = std::make_unique<pinocchio::Data>(pinocchio_model_);
-      ee_frame_id_ = pinocchio_model_.getFrameId(ee_frame_);
-      if (ee_frame_id_ >= pinocchio_model_.frames.size()) {
-        pinocchio_model_loaded_ = false;
-        RCLCPP_ERROR(get_logger(), "ee_frame '%s' not found in URDF model.", ee_frame_.c_str());
-        return;
-      }
-
-      if (pinocchio_model_.nq != kDof || pinocchio_model_.nv != kDof) {
-        pinocchio_model_loaded_ = false;
-        RCLCPP_ERROR(
-          get_logger(),
-          "This IK mapper requires nq=nv=%d, but got nq=%d nv=%d.",
-          kDof, pinocchio_model_.nq, pinocchio_model_.nv);
-        return;
-      }
-
-      const Eigen::Vector4d q_zero = Eigen::Vector4d::Zero();
-      pinocchio::forwardKinematics(pinocchio_model_, *pinocchio_data_, q_zero);
-      pinocchio::updateFramePlacements(pinocchio_model_, *pinocchio_data_);
-      ik_pitch_reference_rad_ = raw_pitch_from_rotation(pinocchio_data_->oMf[ee_frame_id_].rotation());
-
-      pinocchio_model_loaded_ = true;
-      RCLCPP_INFO(get_logger(), "Pinocchio model loaded. ee_frame=%s", ee_frame_.c_str());
-    } catch (const std::exception & e) {
-      pinocchio_model_loaded_ = false;
-      RCLCPP_ERROR(get_logger(), "Failed to load Pinocchio model: %s", e.what());
-    }
   }
 #endif
 
@@ -308,6 +377,22 @@ private:
       current_q_(static_cast<Eigen::Index>(i)) = msg->position[i];
     }
     has_joint_state_ = true;
+  }
+
+  void on_payload_attached(const std_msgs::msg::Bool::SharedPtr msg)
+  {
+    if (payload_attached_ == msg->data) {
+      return;
+    }
+    payload_attached_ = msg->data;
+#if NMB_HAS_PINOCCHIO
+    if (payload_attached_ && !payload_context_.loaded) {
+      RCLCPP_WARN(
+        get_logger(),
+        "Payload attached requested, but payload IK context is unavailable. Falling back to empty context.");
+    }
+    log_active_context();
+#endif
   }
 
   static bool parse_cartesian_state(const std_msgs::msg::Float64MultiArray & msg, CartesianState & out)
@@ -329,7 +414,8 @@ private:
     (void)msg;
     return;
 #else
-    if (!pinocchio_model_loaded_ || !pinocchio_data_) {
+    const auto * ctx = active_context();
+    if (!ctx || !ctx->loaded || !ctx->data) {
       return;
     }
 
@@ -341,21 +427,23 @@ private:
 
     state.p(3) = wrap_to_pi(state.p(3));
 
-    Eigen::Vector4d seed = has_last_solution_ ? last_q_solution_ : (has_joint_state_ ? current_q_ : Eigen::Vector4d::Zero());
+    const Eigen::Vector4d seed =
+      has_last_solution_ ? last_q_solution_ : (has_joint_state_ ? current_q_ : Eigen::Vector4d::Zero());
     Eigen::Vector4d q_solution = seed;
     double pos_err = std::numeric_limits<double>::infinity();
     double pitch_err = std::numeric_limits<double>::infinity();
-    const bool ok = solve_ik_iterative(state, seed, q_solution, pos_err, pitch_err);
+    const bool ok = solve_ik_iterative(*ctx, state, seed, q_solution, pos_err, pitch_err);
 
     if (!ok) {
       RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
-        "IK failed. hold last joint command. pos_err=%.5f pitch_err=%.5f", pos_err, pitch_err);
+        "IK failed in context '%s'. hold last joint command. pos_err=%.5f pitch_err=%.5f",
+        ctx->label.c_str(), pos_err, pitch_err);
       return;
     }
 
     Eigen::Matrix4d J;
-    if (!compute_task_jacobian(q_solution, J)) {
+    if (!compute_task_jacobian(*ctx, q_solution, J)) {
       return;
     }
 
@@ -371,11 +459,12 @@ private:
     }
 
     Eigen::Vector4d jdot_qdot = Eigen::Vector4d::Zero();
-    if (!compute_task_bias_acceleration(q_solution, qdot, jdot_qdot)) {
+    if (!compute_task_bias_acceleration(*ctx, q_solution, qdot, jdot_qdot)) {
       jdot_qdot.setZero();
       RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 2000,
-        "Failed to compute Jdot*qdot with Pinocchio. Falling back to zero bias term.");
+        "Failed to compute Jdot*qdot in context '%s'. Falling back to zero bias term.",
+        ctx->label.c_str());
     }
 
     const Eigen::Vector4d corrected_task_ddp = state.ddp - jdot_qdot;
@@ -389,10 +478,7 @@ private:
     }
 
     publish_joint_state(q_solution, qdot, qddot);
-
-    prev_q_solution_ = last_q_solution_;
     last_q_solution_ = q_solution;
-    has_prev_solution_ = has_last_solution_;
     has_last_solution_ = true;
 #endif
   }
@@ -409,10 +495,6 @@ private:
       msg.position[static_cast<size_t>(i)] = q(i);
       msg.velocity[static_cast<size_t>(i)] = dq(i);
       msg.effort[static_cast<size_t>(i)] = ddq(i);
-      // RCLCPP_INFO(get_logger(), "Publishing joint state: q=[%.3f, %.3f, %.3f, %.3f] dq=[%.3f, %.3f, %.3f, %.3f] ddq=[%.3f, %.3f, %.3f, %.3f]",
-      //   q(0), q(1), q(2), q(3),
-      //   dq(0), dq(1), dq(2), dq(3),
-      //   ddq(0), ddq(1), ddq(2), ddq(3));
     }
     planned_joint_pub_->publish(msg);
   }
@@ -421,8 +503,12 @@ private:
   double ik_hz_ {500.0};
   double dt_ {1.0 / 500.0};
 
-  std::string urdf_path_;
-  std::string ee_frame_;
+  std::string urdf_path_empty_;
+  std::string urdf_path_payload_;
+  std::string task_frame_empty_;
+  std::string task_frame_payload_;
+  std::string payload_attached_topic_;
+  bool payload_attached_ {false};
 
   int ik_max_iters_ {200};
   double ik_tolerance_ {1e-3};
@@ -438,21 +524,17 @@ private:
   Eigen::Vector4d current_q_ = Eigen::Vector4d::Zero();
   bool has_joint_state_ {false};
 
-  Eigen::Vector4d prev_q_solution_ = Eigen::Vector4d::Zero();
   Eigen::Vector4d last_q_solution_ = Eigen::Vector4d::Zero();
-  bool has_prev_solution_ {false};
   bool has_last_solution_ {false};
 
 #if NMB_HAS_PINOCCHIO
-  mutable pinocchio::Model pinocchio_model_;
-  mutable std::unique_ptr<pinocchio::Data> pinocchio_data_;
-  pinocchio::FrameIndex ee_frame_id_ {0};
-  bool pinocchio_model_loaded_ {false};
-  double ik_pitch_reference_rad_ {0.0};
+  mutable ModelContext empty_context_;
+  mutable ModelContext payload_context_;
 #endif
 
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_state_sub_;
   rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr cartesian_state_sub_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr payload_state_sub_;
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr planned_joint_pub_;
 };
 

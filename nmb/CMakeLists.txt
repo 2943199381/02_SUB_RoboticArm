@@ -8,6 +8,7 @@ endif()
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rcl_interfaces REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(trajectory_msgs REQUIRED)
@@ -47,6 +48,16 @@ if(pinocchio_FOUND)
   target_compile_definitions(arm_controller_node PRIVATE NMB_PINOCCHIO_FOUND=1)
 endif()
 
+add_executable(arm_automation_state_machine_node src/arm_automation_state_machine_node.cpp)
+target_include_directories(arm_automation_state_machine_node PRIVATE include)
+ament_target_dependencies(
+  arm_automation_state_machine_node
+  rclcpp
+  std_msgs
+  sensor_msgs
+)
+target_link_libraries(arm_automation_state_machine_node Eigen3::Eigen)
+
 add_executable(motor_comm_node src/motor_comm_node.cpp)
 ament_target_dependencies(
   motor_comm_node
@@ -79,11 +90,22 @@ if(pinocchio_FOUND)
   target_compile_definitions(cartesian_ik_mapper_node PRIVATE NMB_PINOCCHIO_FOUND=1)
 endif()
 
+add_executable(robot_description_switcher_node src/robot_description_switcher_node.cpp)
+target_include_directories(robot_description_switcher_node PRIVATE include)
+ament_target_dependencies(
+  robot_description_switcher_node
+  rclcpp
+  rcl_interfaces
+  std_msgs
+)
+
 install(TARGETS
   arm_controller_node
+  arm_automation_state_machine_node
   motor_comm_node
   trajectory_bspline_jerk_planner_node
   cartesian_ik_mapper_node
+  robot_description_switcher_node
   DESTINATION lib/${PROJECT_NAME}
 )
 

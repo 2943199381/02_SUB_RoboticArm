@@ -1,0 +1,31 @@
+arm_automation_state_machine_node:
+  ros__parameters:
+    automation_hz: 200.0
+    automation_start_topic: /arm_control/start
+    current_pose_topic: /current_ee_pose_pitch
+    joint_state_topic: /joint_states
+    pd_task_wrench_topic: /arm_pd_task_wrench
+    payload_attached_topic: /payload_attached
+    payload_attached_initial: false
+    payload_suction_cmd_topic: /payload_suction_cmd
+    payload_grasped_topic: /payload_grasped
+    cartesian_path_request_topic: /cartesian_path_request
+    model_transition_cmd_topic: /arm_model_transition_cmd
+    model_blend_status_topic: /arm_model_blend_status
+    lift_distance_m: 0.02
+    suction_wait_timeout_sec: 3.0
+    retry_wait_sec: 1.0
+    model_blend_duration_sec: 0.5
+    context_switch_settle_sec: 0.05
+    pickup_force_check_delay_sec: 0.5
+    load_settle_sec: 0.5
+    load_sample_sec: 0.25
+    motion_timeout_sec: 5.0
+    pose_position_tolerance_m: 0.003
+    pose_pitch_tolerance_rad: 0.03
+    joint_stopped_velocity_tolerance: 0.08
+    expected_payload_mass_kg: 0.63
+    gravity_mps2: 9.81
+    pickup_force_tolerance_ratio: 0.95
+    release_force_clear_ratio: 0.35
+    release_clear_hold_sec: 0.3

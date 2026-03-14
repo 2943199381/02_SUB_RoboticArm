@@ -2,12 +2,14 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <limits>
 #include <string>
 #include <vector>
 
 #include <Eigen/Dense>
 #include "geometry_msgs/msg/point.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "std_msgs/msg/bool.hpp"
 #include "std_msgs/msg/float64_multi_array.hpp"
 #include "visualization_msgs/msg/marker.hpp"
 
@@ -21,40 +23,19 @@ public:
     hold_last_state_ = declare_parameter<bool>("hold_last_state", true);
     path_frame_ = declare_parameter<std::string>("path_frame", "base_link");
     path_marker_topic_ = declare_parameter<std::string>("path_marker_topic", "/planned_cartesian_curve");
+    payload_attached_topic_ = declare_parameter<std::string>("payload_attached_topic", "/payload_attached");
+    payload_attached_ = declare_parameter<bool>("payload_attached_initial", false);
 
-    const auto cart_vel_param = declare_parameter<std::vector<double>>(
-      "max_cartesian_velocity", std::vector<double>{0.5, 0.5, 0.5, 1.0});
-    const auto cart_acc_param = declare_parameter<std::vector<double>>(
-      "max_cartesian_acceleration", std::vector<double>{1.0, 1.0, 1.0, 2.0});
-    const auto cart_jerk_param = declare_parameter<std::vector<double>>(
-      "max_cartesian_jerk", std::vector<double>{5.0, 5.0, 5.0, 10.0});
-    const auto cart_acc_accel_param = declare_parameter<std::vector<double>>(
-      "max_cartesian_acceleration_accel", cart_acc_param);
-    const auto cart_acc_decel_param = declare_parameter<std::vector<double>>(
-      "max_cartesian_acceleration_decel", cart_acc_param);
-    const auto cart_jerk_accel_param = declare_parameter<std::vector<double>>(
-      "max_cartesian_jerk_accel", cart_jerk_param);
-    const auto cart_jerk_decel_param = declare_parameter<std::vector<double>>(
-      "max_cartesian_jerk_decel", cart_jerk_param);
-    max_cartesian_velocity_ = vector_param_to_eigen4(cart_vel_param, 0.5, 1e-5);
-    max_cartesian_acceleration_accel_ = vector_param_to_eigen4(cart_acc_accel_param, 1.0, 1e-5);
-    max_cartesian_acceleration_decel_ = vector_param_to_eigen4(cart_acc_decel_param, 1.0, 1e-5);
-    max_cartesian_jerk_accel_ = vector_param_to_eigen4(cart_jerk_accel_param, 5.0, 1e-5);
-    max_cartesian_jerk_decel_ = vector_param_to_eigen4(cart_jerk_decel_param, 5.0, 1e-5);
-
-    scalar_velocity_limit_ = std::max(1e-5, declare_parameter<double>("scalar_velocity_limit", 1.0));
-    const double scalar_acc_param = std::max(1e-5, declare_parameter<double>("scalar_acceleration_limit", 2.0));
-    const double scalar_jerk_param = std::max(1e-5, declare_parameter<double>("scalar_jerk_limit", 10.0));
-    scalar_acceleration_limit_accel_ = std::max(
-      1e-5, declare_parameter<double>("scalar_acceleration_limit_accel", scalar_acc_param));
-    scalar_acceleration_limit_decel_ = std::max(
-      1e-5, declare_parameter<double>("scalar_acceleration_limit_decel", scalar_acc_param));
-    scalar_jerk_limit_accel_ = std::max(
-      1e-5, declare_parameter<double>("scalar_jerk_limit_accel", scalar_jerk_param));
-    scalar_jerk_limit_decel_ = std::max(
-      1e-5, declare_parameter<double>("scalar_jerk_limit_decel", scalar_jerk_param));
-    deceleration_distance_scale_ = std::max(
-      1.0, declare_parameter<double>("deceleration_distance_scale", 1.15));
+    max_cartesian_speed_ = std::max(
+      1e-5, declare_parameter<double>("max_cartesian_speed", 0.3));
+    max_cartesian_acceleration_accel_ = std::max(
+      1e-5, declare_parameter<double>("max_cartesian_acceleration_accel", 0.3));
+    max_cartesian_acceleration_decel_ = std::max(
+      1e-5, declare_parameter<double>("max_cartesian_acceleration_decel", 0.18));
+    max_cartesian_jerk_accel_ = std::max(
+      1e-5, declare_parameter<double>("max_cartesian_jerk_accel", 5.0));
+    max_cartesian_jerk_decel_ = std::max(
+      1e-5, declare_parameter<double>("max_cartesian_jerk_decel", 2.5));
     derivative_step_ = std::clamp(declare_parameter<double>("derivative_step", 1e-3), 1e-5, 0.1);
 
     const auto max_steps_param = declare_parameter<int64_t>("max_planning_steps", 60000);
@@ -64,6 +45,10 @@ public:
     current_ee_pose_sub_ = create_subscription<std_msgs::msg::Float64MultiArray>(
       "/current_ee_pose_pitch", 10,
       std::bind(&TrajectoryBsplineJerkPlannerNode::on_current_ee_pose, this, std::placeholders::_1));
+
+    payload_state_sub_ = create_subscription<std_msgs::msg::Bool>(
+      payload_attached_topic_, 10,
+      std::bind(&TrajectoryBsplineJerkPlannerNode::on_payload_attached, this, std::placeholders::_1));
 
     cartesian_path_sub_ = create_subscription<std_msgs::msg::Float64MultiArray>(
       "/cartesian_path_request", 10,
@@ -80,8 +65,11 @@ public:
 
     RCLCPP_INFO(
       get_logger(),
-      "trajectory_bspline_jerk_planner_node started. start=/current_ee_pose_pitch request=/cartesian_path_request output=/planned_cartesian_state hz=%.1f dt=%.6f",
-      planner_hz_, plan_dt_);
+      "trajectory_bspline_jerk_planner_node started. start=/current_ee_pose_pitch request=/cartesian_path_request output=/planned_cartesian_state hz=%.1f dt=%.6f payload_topic=%s max_speed=%.3f max_accel=%.3f max_decel=%.3f jerk_accel=%.3f jerk_decel=%.3f",
+      planner_hz_, plan_dt_, payload_attached_topic_.c_str(),
+      max_cartesian_speed_,
+      max_cartesian_acceleration_accel_, max_cartesian_acceleration_decel_,
+      max_cartesian_jerk_accel_, max_cartesian_jerk_decel_);
   }
 
 private:
@@ -182,19 +170,6 @@ private:
       a += 2.0 * M_PI;
     }
     return a;
-  }
-
-  static Eigen::Vector4d vector_param_to_eigen4(
-    const std::vector<double> & src,
-    double fill,
-    double min_value)
-  {
-    Eigen::Vector4d out = Eigen::Vector4d::Constant(fill);
-    const size_t n = std::min(static_cast<size_t>(kDim), src.size());
-    for (size_t i = 0; i < n; ++i) {
-      out(static_cast<Eigen::Index>(i)) = std::max(min_value, src[i]);
-    }
-    return out;
   }
 
   static void unwrap_pitch_sequence(std::vector<Eigen::Vector4d> & anchors)
@@ -442,69 +417,40 @@ private:
     return out;
   }
 
-  double compute_scalar_velocity_limit(const Eigen::Vector4d & dpose_du) const
+  double compute_path_velocity_limit(const Eigen::Vector4d & dpose_du) const
   {
-    double limit = scalar_velocity_limit_;
-    for (int i = 0; i < kDim; ++i) {
-      const double axis_limit = max_cartesian_velocity_(i) / (std::abs(dpose_du(i)) + 1e-8);
-      limit = std::min(limit, axis_limit);
-    }
-    return std::max(1e-5, limit);
+    const double tangent_norm = dpose_du.norm();
+    return std::max(1e-5, max_cartesian_speed_ / (tangent_norm + 1e-8));
   }
 
-  const Eigen::Vector4d & max_cartesian_acceleration(MotionPhase phase) const
+  double max_cartesian_acceleration(MotionPhase phase) const
   {
     return phase == MotionPhase::kDecelerating ?
       max_cartesian_acceleration_decel_ : max_cartesian_acceleration_accel_;
   }
 
-  const Eigen::Vector4d & max_cartesian_jerk(MotionPhase phase) const
+  double max_cartesian_jerk(MotionPhase phase) const
   {
     return phase == MotionPhase::kDecelerating ?
       max_cartesian_jerk_decel_ : max_cartesian_jerk_accel_;
   }
 
-  double scalar_acceleration_limit(MotionPhase phase) const
-  {
-    return phase == MotionPhase::kDecelerating ?
-      scalar_acceleration_limit_decel_ : scalar_acceleration_limit_accel_;
-  }
-
-  double scalar_jerk_limit(MotionPhase phase) const
-  {
-    return phase == MotionPhase::kDecelerating ?
-      scalar_jerk_limit_decel_ : scalar_jerk_limit_accel_;
-  }
-
-  double compute_scalar_acceleration_limit(
+  double compute_path_acceleration_limit(
     const Eigen::Vector4d & dpose_du,
     const Eigen::Vector4d & ddpose_du2,
     double u_dot,
     MotionPhase phase) const
   {
-    const Eigen::Vector4d & axis_limits = max_cartesian_acceleration(phase);
-    double limit = scalar_acceleration_limit(phase);
-    for (int i = 0; i < kDim; ++i) {
-      const double denom = std::abs(dpose_du(i)) + 1e-8;
-      const double curvature = std::abs(ddpose_du2(i)) * u_dot * u_dot;
-      const double avail = (axis_limits(i) - curvature) / denom;
-      if (avail <= 0.0) {
-        return 1e-5;
-      }
-      limit = std::min(limit, avail);
-    }
-    return std::max(1e-5, limit);
+    const double tangent_norm = dpose_du.norm();
+    const double curvature_norm = ddpose_du2.norm() * u_dot * u_dot;
+    const double avail = (max_cartesian_acceleration(phase) - curvature_norm) / (tangent_norm + 1e-8);
+    return std::max(1e-5, avail);
   }
 
-  double compute_scalar_jerk_limit(const Eigen::Vector4d & dpose_du, MotionPhase phase) const
+  double compute_path_jerk_limit(const Eigen::Vector4d & dpose_du, MotionPhase phase) const
   {
-    const Eigen::Vector4d & axis_limits = max_cartesian_jerk(phase);
-    double limit = scalar_jerk_limit(phase);
-    for (int i = 0; i < kDim; ++i) {
-      const double axis_limit = axis_limits(i) / (std::abs(dpose_du(i)) + 1e-8);
-      limit = std::min(limit, axis_limit);
-    }
-    return std::max(1e-5, limit);
+    const double tangent_norm = dpose_du.norm();
+    return std::max(1e-5, max_cartesian_jerk(phase) / (tangent_norm + 1e-8));
   }
 
   double estimate_stop_distance(
@@ -563,16 +509,16 @@ private:
 
     for (int step = 0; step < max_planning_steps_; ++step) {
       const PathDerivatives deriv = evaluate_path(curve, u);
-      const double v_limit = compute_scalar_velocity_limit(deriv.dp_du);
-      const double a_accel_limit = compute_scalar_acceleration_limit(
+      const double v_limit = compute_path_velocity_limit(deriv.dp_du);
+      const double a_accel_limit = compute_path_acceleration_limit(
         deriv.dp_du, deriv.ddp_du2, u_dot, MotionPhase::kAccelerating);
-      const double a_decel_limit = compute_scalar_acceleration_limit(
+      const double a_decel_limit = compute_path_acceleration_limit(
         deriv.dp_du, deriv.ddp_du2, u_dot, MotionPhase::kDecelerating);
-      const double j_accel_limit = compute_scalar_jerk_limit(deriv.dp_du, MotionPhase::kAccelerating);
-      const double j_decel_limit = compute_scalar_jerk_limit(deriv.dp_du, MotionPhase::kDecelerating);
+      const double j_accel_limit = compute_path_jerk_limit(deriv.dp_du, MotionPhase::kAccelerating);
+      const double j_decel_limit = compute_path_jerk_limit(deriv.dp_du, MotionPhase::kDecelerating);
 
       const double remaining = 1.0 - u;
-      const double stop_distance = deceleration_distance_scale_ * estimate_stop_distance(
+      const double stop_distance = estimate_stop_distance(
         u_dot, u_ddot, a_decel_limit, j_decel_limit, plan_dt_);
 
       double target_u_ddot = 0.0;
@@ -643,6 +589,32 @@ private:
     return true;
   }
 
+  static double compute_position_arc_length(const std::vector<CartesianSample> & samples)
+  {
+    if (samples.size() < 2U) {
+      return 0.0;
+    }
+
+    double length = 0.0;
+    for (size_t i = 1; i < samples.size(); ++i) {
+      length += (samples[i].p.head<3>() - samples[i - 1U].p.head<3>()).norm();
+    }
+    return length;
+  }
+
+  static double compute_pitch_arc_length(const std::vector<CartesianSample> & samples)
+  {
+    if (samples.size() < 2U) {
+      return 0.0;
+    }
+
+    double length = 0.0;
+    for (size_t i = 1; i < samples.size(); ++i) {
+      length += std::abs(wrap_to_pi(samples[i].p(3) - samples[i - 1U].p(3)));
+    }
+    return length;
+  }
+
   void on_cartesian_path_request(const std_msgs::msg::Float64MultiArray::SharedPtr msg)
   {
     if (msg->data.size() < static_cast<size_t>(kDim) || msg->data.size() % static_cast<size_t>(kDim) != 0) {
@@ -656,7 +628,7 @@ private:
     if (!has_current_ee_pose_) {
       RCLCPP_WARN(
         get_logger(),
-        "No /current_ee_pose_pitch received yet. Cannot use current end-effector as trajectory start.");
+        "No /current_ee_pose_pitch received yet. Cannot use current task frame as trajectory start.");
       return;
     }
 
@@ -682,14 +654,27 @@ private:
     publish_path_marker(cartesian_samples_);
     sample_index_ = 0;
     trajectory_active_ = true;
+    waiting_for_task_frame_sync_ = false;
     has_last_sample_ = false;
+
+    const Eigen::Vector4d & start_pose = anchors.front();
+    const Eigen::Vector4d & goal_pose = anchors.back();
+    const double direct_position_distance = (goal_pose.head<3>() - start_pose.head<3>()).norm();
+    const double direct_pitch_delta = std::abs(wrap_to_pi(goal_pose(3) - start_pose(3)));
+    const double sampled_position_arc = compute_position_arc_length(cartesian_samples_);
+    const double sampled_pitch_arc = compute_pitch_arc_length(cartesian_samples_);
 
     RCLCPP_INFO(
       get_logger(),
-      "Accepted Cartesian path. waypoints=%zu samples=%zu duration=%.3f s",
+      "Accepted Cartesian path. waypoints=%zu samples=%zu duration=%.3f s "
+      "start=[%.4f, %.4f, %.4f, %.4f] goal=[%.4f, %.4f, %.4f, %.4f] "
+      "xyz_dist=%.4f m xyz_arc=%.4f m pitch_delta=%.4f rad pitch_arc=%.4f rad",
       anchors.size() >= 2U ? anchors.size() - 2U : 0U,
       cartesian_samples_.size(),
-      cartesian_samples_.size() * plan_dt_);
+      cartesian_samples_.size() * plan_dt_,
+      start_pose(0), start_pose(1), start_pose(2), start_pose(3),
+      goal_pose(0), goal_pose(1), goal_pose(2), goal_pose(3),
+      direct_position_distance, sampled_position_arc, direct_pitch_delta, sampled_pitch_arc);
   }
 
   void on_current_ee_pose(const std_msgs::msg::Float64MultiArray::SharedPtr msg)
@@ -701,6 +686,34 @@ private:
       current_ee_pose_(i) = msg->data[static_cast<size_t>(i)];
     }
     has_current_ee_pose_ = true;
+
+    if (waiting_for_task_frame_sync_) {
+      last_sample_.p = current_ee_pose_;
+      last_sample_.dp.setZero();
+      last_sample_.ddp.setZero();
+      has_last_sample_ = true;
+      waiting_for_task_frame_sync_ = false;
+      RCLCPP_INFO(
+        get_logger(),
+        "Synchronized Cartesian hold state to refreshed task frame pose after payload switch.");
+    }
+  }
+
+  void on_payload_attached(const std_msgs::msg::Bool::SharedPtr msg)
+  {
+    if (payload_attached_ == msg->data) {
+      return;
+    }
+
+    payload_attached_ = msg->data;
+    clear_planned_path(true);
+    has_last_sample_ = false;
+    waiting_for_task_frame_sync_ = hold_last_state_;
+
+    RCLCPP_INFO(
+      get_logger(),
+      "Payload state changed to %s. Cleared active Cartesian trajectory and waiting for a refreshed task-frame pose before holding.",
+      payload_attached_ ? "attached" : "detached");
   }
 
   void planner_loop()
@@ -713,7 +726,7 @@ private:
     }
 
     if (sample_index_ >= cartesian_samples_.size()) {
-      trajectory_active_ = false;
+      clear_planned_path(true);
       return;
     }
 
@@ -725,8 +738,18 @@ private:
 
     ++sample_index_;
     if (sample_index_ >= cartesian_samples_.size()) {
-      trajectory_active_ = false;
+      clear_planned_path(true);
       RCLCPP_INFO(get_logger(), "Cartesian trajectory output finished.");
+    }
+  }
+
+  void clear_planned_path(bool clear_marker)
+  {
+    trajectory_active_ = false;
+    cartesian_samples_.clear();
+    sample_index_ = 0;
+    if (clear_marker) {
+      clear_path_marker();
     }
   }
 
@@ -777,25 +800,32 @@ private:
     path_marker_pub_->publish(marker);
   }
 
+  void clear_path_marker()
+  {
+    visualization_msgs::msg::Marker marker;
+    marker.header.stamp = now();
+    marker.header.frame_id = path_frame_;
+    marker.ns = "planned_cartesian_curve";
+    marker.id = 0;
+    marker.action = visualization_msgs::msg::Marker::DELETE;
+    path_marker_pub_->publish(marker);
+  }
+
 private:
   double planner_hz_ {500.0};
   double plan_dt_ {1.0 / 500.0};
   bool hold_last_state_ {true};
   std::string path_frame_ {"base_link"};
   std::string path_marker_topic_ {"/planned_cartesian_curve"};
+  std::string payload_attached_topic_ {"/payload_attached"};
+  bool payload_attached_ {false};
 
-  Eigen::Vector4d max_cartesian_velocity_ = Eigen::Vector4d::Constant(0.5);
-  Eigen::Vector4d max_cartesian_acceleration_accel_ = Eigen::Vector4d::Constant(1.0);
-  Eigen::Vector4d max_cartesian_acceleration_decel_ = Eigen::Vector4d::Constant(1.0);
-  Eigen::Vector4d max_cartesian_jerk_accel_ = Eigen::Vector4d::Constant(5.0);
-  Eigen::Vector4d max_cartesian_jerk_decel_ = Eigen::Vector4d::Constant(5.0);
+  double max_cartesian_speed_ {0.3};
+  double max_cartesian_acceleration_accel_ {0.3};
+  double max_cartesian_acceleration_decel_ {0.18};
+  double max_cartesian_jerk_accel_ {5.0};
+  double max_cartesian_jerk_decel_ {2.5};
 
-  double scalar_velocity_limit_ {1.0};
-  double scalar_acceleration_limit_accel_ {2.0};
-  double scalar_acceleration_limit_decel_ {2.0};
-  double scalar_jerk_limit_accel_ {10.0};
-  double scalar_jerk_limit_decel_ {10.0};
-  double deceleration_distance_scale_ {1.15};
   double derivative_step_ {1e-3};
   int max_planning_steps_ {60000};
 
@@ -807,8 +837,10 @@ private:
   bool trajectory_active_ {false};
   CartesianSample last_sample_;
   bool has_last_sample_ {false};
+  bool waiting_for_task_frame_sync_ {false};
 
   rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr current_ee_pose_sub_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr payload_state_sub_;
   rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr cartesian_path_sub_;
   rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr planned_cartesian_pub_;
   rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr path_marker_pub_;
