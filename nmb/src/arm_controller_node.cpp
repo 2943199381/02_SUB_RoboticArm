@@ -34,12 +34,20 @@ public:
   : Node("arm_controller_node")
   {
     control_hz_ = declare_parameter<double>("control_hz", 500.0);
-    const auto kp_param = declare_parameter<std::vector<double>>("kp", std::vector<double>{2.0, 2.0, 2.0, 0.0});
-    const auto kd_param = declare_parameter<std::vector<double>>("kd", std::vector<double>{1.0, 1.0, 1.0, 0.0});
+    const auto legacy_kp_param = declare_parameter<std::vector<double>>(
+      "kp", std::vector<double>{2.0, 2.0, 2.0, 0.0});
+    const auto legacy_kd_param = declare_parameter<std::vector<double>>(
+      "kd", std::vector<double>{1.0, 1.0, 1.0, 0.0});
+    const auto kp_empty_param = declare_parameter<std::vector<double>>("kp_empty", legacy_kp_param);
+    const auto kd_empty_param = declare_parameter<std::vector<double>>("kd_empty", legacy_kd_param);
+    const auto kp_payload_param = declare_parameter<std::vector<double>>("kp_payload", kp_empty_param);
+    const auto kd_payload_param = declare_parameter<std::vector<double>>("kd_payload", kd_empty_param);
     const auto initial_hold_q_param = declare_parameter<std::vector<double>>(
       "initial_hold_q", std::vector<double>{0.0, 0.0, 0.0, 0.0});
-    kp_ = vector_param_to_eigen4(kp_param, 20.0);
-    kd_ = vector_param_to_eigen4(kd_param, 1.0);
+    kp_empty_ = vector_param_to_eigen4(kp_empty_param, 20.0);
+    kd_empty_ = vector_param_to_eigen4(kd_empty_param, 1.0);
+    kp_payload_ = vector_param_to_eigen4(kp_payload_param, 20.0);
+    kd_payload_ = vector_param_to_eigen4(kd_payload_param, 1.0);
     initial_hold_q_ = vector_param_to_eigen4(initial_hold_q_param, 0.0);
 
     const std::string legacy_urdf_path = declare_parameter<std::string>("urdf_path", "");
@@ -163,6 +171,18 @@ private:
     const double progress = std::clamp(
       (now() - blend_start_time_).seconds() / std::max(1e-6, blend_duration_sec_), 0.0, 1.0);
     return blend_start_alpha_ + progress * (blend_target_alpha_ - blend_start_alpha_);
+  }
+
+  Eigen::Vector4d current_kp() const
+  {
+    const double payload_alpha = current_payload_alpha();
+    return (1.0 - payload_alpha) * kp_empty_ + payload_alpha * kp_payload_;
+  }
+
+  Eigen::Vector4d current_kd() const
+  {
+    const double payload_alpha = current_payload_alpha();
+    return (1.0 - payload_alpha) * kd_empty_ + payload_alpha * kd_payload_;
   }
 
   void publish_blend_status()
@@ -527,7 +547,9 @@ private:
       pos_err(i) = wrap_to_pi(desired_q_(i) - q_(i));
     }
     const Eigen::Vector4d vel_err = desired_dq_ - dq_;
-    const Eigen::Vector4d tau_pd = 0.08 * kp_.cwiseProduct(pos_err) + 0.06 * kd_.cwiseProduct(vel_err);
+    const Eigen::Vector4d kp = current_kp();
+    const Eigen::Vector4d kd = current_kd();
+    const Eigen::Vector4d tau_pd = 0.08 * kp.cwiseProduct(pos_err) + 0.06 * kd.cwiseProduct(vel_err);
 
     Eigen::Vector4d tau_model = Eigen::Vector4d::Zero();
     WrenchEstimate wrench_estimate;
@@ -574,8 +596,10 @@ private:
 
 private:
   double control_hz_ {500.0};
-  Eigen::Vector4d kp_ = Eigen::Vector4d::Zero();
-  Eigen::Vector4d kd_ = Eigen::Vector4d::Zero();
+  Eigen::Vector4d kp_empty_ = Eigen::Vector4d::Zero();
+  Eigen::Vector4d kd_empty_ = Eigen::Vector4d::Zero();
+  Eigen::Vector4d kp_payload_ = Eigen::Vector4d::Zero();
+  Eigen::Vector4d kd_payload_ = Eigen::Vector4d::Zero();
   Eigen::Vector4d initial_hold_q_ = Eigen::Vector4d::Zero();
   std::string urdf_path_empty_;
   std::string urdf_path_payload_;

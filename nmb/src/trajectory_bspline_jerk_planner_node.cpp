@@ -26,16 +26,78 @@ public:
     payload_attached_topic_ = declare_parameter<std::string>("payload_attached_topic", "/payload_attached");
     payload_attached_ = declare_parameter<bool>("payload_attached_initial", false);
 
-    max_cartesian_speed_ = std::max(
+    const double legacy_max_cartesian_speed = std::max(
       1e-5, declare_parameter<double>("max_cartesian_speed", 0.3));
-    max_cartesian_acceleration_accel_ = std::max(
+    const double legacy_max_cartesian_acceleration_accel = std::max(
       1e-5, declare_parameter<double>("max_cartesian_acceleration_accel", 0.3));
-    max_cartesian_acceleration_decel_ = std::max(
+    const double legacy_max_cartesian_acceleration_decel = std::max(
       1e-5, declare_parameter<double>("max_cartesian_acceleration_decel", 0.18));
-    max_cartesian_jerk_accel_ = std::max(
+    const double legacy_max_cartesian_jerk_accel = std::max(
       1e-5, declare_parameter<double>("max_cartesian_jerk_accel", 5.0));
-    max_cartesian_jerk_decel_ = std::max(
+    const double legacy_max_cartesian_jerk_decel = std::max(
       1e-5, declare_parameter<double>("max_cartesian_jerk_decel", 2.5));
+    const double legacy_max_pitch_speed = std::max(
+      1e-5, declare_parameter<double>("max_pitch_speed", legacy_max_cartesian_speed));
+    const double legacy_max_pitch_acceleration_accel = std::max(
+      1e-5, declare_parameter<double>(
+        "max_pitch_acceleration_accel", legacy_max_cartesian_acceleration_accel));
+    const double legacy_max_pitch_acceleration_decel = std::max(
+      1e-5, declare_parameter<double>(
+        "max_pitch_acceleration_decel", legacy_max_cartesian_acceleration_decel));
+    const double legacy_max_pitch_jerk_accel = std::max(
+      1e-5, declare_parameter<double>("max_pitch_jerk_accel", legacy_max_cartesian_jerk_accel));
+    const double legacy_max_pitch_jerk_decel = std::max(
+      1e-5, declare_parameter<double>("max_pitch_jerk_decel", legacy_max_cartesian_jerk_decel));
+
+    max_cartesian_speed_empty_ = std::max(
+      1e-5, declare_parameter<double>("max_cartesian_speed_empty", legacy_max_cartesian_speed));
+    max_cartesian_speed_payload_ = std::max(
+      1e-5, declare_parameter<double>("max_cartesian_speed_payload", max_cartesian_speed_empty_));
+    max_cartesian_acceleration_accel_empty_ = std::max(
+      1e-5, declare_parameter<double>(
+        "max_cartesian_acceleration_accel_empty", legacy_max_cartesian_acceleration_accel));
+    max_cartesian_acceleration_accel_payload_ = std::max(
+      1e-5, declare_parameter<double>(
+        "max_cartesian_acceleration_accel_payload", max_cartesian_acceleration_accel_empty_));
+    max_cartesian_acceleration_decel_empty_ = std::max(
+      1e-5, declare_parameter<double>(
+        "max_cartesian_acceleration_decel_empty", legacy_max_cartesian_acceleration_decel));
+    max_cartesian_acceleration_decel_payload_ = std::max(
+      1e-5, declare_parameter<double>(
+        "max_cartesian_acceleration_decel_payload", max_cartesian_acceleration_decel_empty_));
+    max_cartesian_jerk_accel_empty_ = std::max(
+      1e-5, declare_parameter<double>("max_cartesian_jerk_accel_empty", legacy_max_cartesian_jerk_accel));
+    max_cartesian_jerk_accel_payload_ = std::max(
+      1e-5, declare_parameter<double>("max_cartesian_jerk_accel_payload", max_cartesian_jerk_accel_empty_));
+    max_cartesian_jerk_decel_empty_ = std::max(
+      1e-5, declare_parameter<double>("max_cartesian_jerk_decel_empty", legacy_max_cartesian_jerk_decel));
+    max_cartesian_jerk_decel_payload_ = std::max(
+      1e-5, declare_parameter<double>("max_cartesian_jerk_decel_payload", max_cartesian_jerk_decel_empty_));
+
+    max_pitch_speed_empty_ = std::max(
+      1e-5, declare_parameter<double>("max_pitch_speed_empty", legacy_max_pitch_speed));
+    max_pitch_speed_payload_ = std::max(
+      1e-5, declare_parameter<double>("max_pitch_speed_payload", max_pitch_speed_empty_));
+    max_pitch_acceleration_accel_empty_ = std::max(
+      1e-5, declare_parameter<double>(
+        "max_pitch_acceleration_accel_empty", legacy_max_pitch_acceleration_accel));
+    max_pitch_acceleration_accel_payload_ = std::max(
+      1e-5, declare_parameter<double>(
+        "max_pitch_acceleration_accel_payload", max_pitch_acceleration_accel_empty_));
+    max_pitch_acceleration_decel_empty_ = std::max(
+      1e-5, declare_parameter<double>(
+        "max_pitch_acceleration_decel_empty", legacy_max_pitch_acceleration_decel));
+    max_pitch_acceleration_decel_payload_ = std::max(
+      1e-5, declare_parameter<double>(
+        "max_pitch_acceleration_decel_payload", max_pitch_acceleration_decel_empty_));
+    max_pitch_jerk_accel_empty_ = std::max(
+      1e-5, declare_parameter<double>("max_pitch_jerk_accel_empty", legacy_max_pitch_jerk_accel));
+    max_pitch_jerk_accel_payload_ = std::max(
+      1e-5, declare_parameter<double>("max_pitch_jerk_accel_payload", max_pitch_jerk_accel_empty_));
+    max_pitch_jerk_decel_empty_ = std::max(
+      1e-5, declare_parameter<double>("max_pitch_jerk_decel_empty", legacy_max_pitch_jerk_decel));
+    max_pitch_jerk_decel_payload_ = std::max(
+      1e-5, declare_parameter<double>("max_pitch_jerk_decel_payload", max_pitch_jerk_decel_empty_));
     derivative_step_ = std::clamp(declare_parameter<double>("derivative_step", 1e-3), 1e-5, 0.1);
 
     const auto max_steps_param = declare_parameter<int64_t>("max_planning_steps", 60000);
@@ -65,11 +127,10 @@ public:
 
     RCLCPP_INFO(
       get_logger(),
-      "trajectory_bspline_jerk_planner_node started. start=/current_ee_pose_pitch request=/cartesian_path_request output=/planned_cartesian_state hz=%.1f dt=%.6f payload_topic=%s max_speed=%.3f max_accel=%.3f max_decel=%.3f jerk_accel=%.3f jerk_decel=%.3f",
+      "trajectory_bspline_jerk_planner_node started. start=/current_ee_pose_pitch request=/cartesian_path_request output=/planned_cartesian_state hz=%.1f dt=%.6f payload_topic=%s xyz_speed_empty=%.3f xyz_speed_payload=%.3f pitch_speed_empty=%.3f pitch_speed_payload=%.3f",
       planner_hz_, plan_dt_, payload_attached_topic_.c_str(),
-      max_cartesian_speed_,
-      max_cartesian_acceleration_accel_, max_cartesian_acceleration_decel_,
-      max_cartesian_jerk_accel_, max_cartesian_jerk_decel_);
+      max_cartesian_speed_empty_, max_cartesian_speed_payload_,
+      max_pitch_speed_empty_, max_pitch_speed_payload_);
   }
 
 private:
@@ -94,6 +155,20 @@ private:
     Eigen::Vector4d p = Eigen::Vector4d::Zero();
     Eigen::Vector4d dp_du = Eigen::Vector4d::Zero();
     Eigen::Vector4d ddp_du2 = Eigen::Vector4d::Zero();
+  };
+
+  struct MotionLimits
+  {
+    double max_cartesian_speed {0.3};
+    double max_cartesian_acceleration_accel {0.3};
+    double max_cartesian_acceleration_decel {0.18};
+    double max_cartesian_jerk_accel {5.0};
+    double max_cartesian_jerk_decel {2.5};
+    double max_pitch_speed {0.3};
+    double max_pitch_acceleration_accel {0.3};
+    double max_pitch_acceleration_decel {0.18};
+    double max_pitch_jerk_accel {5.0};
+    double max_pitch_jerk_decel {2.5};
   };
 
   class CubicBSplineCurve
@@ -180,6 +255,52 @@ private:
     for (size_t i = 1; i < anchors.size(); ++i) {
       anchors[i](3) = anchors[i - 1](3) + wrap_to_pi(anchors[i](3) - anchors[i - 1](3));
     }
+  }
+
+  MotionLimits current_motion_limits() const
+  {
+    MotionLimits limits;
+    if (payload_attached_) {
+      limits.max_cartesian_speed = max_cartesian_speed_payload_;
+      limits.max_cartesian_acceleration_accel = max_cartesian_acceleration_accel_payload_;
+      limits.max_cartesian_acceleration_decel = max_cartesian_acceleration_decel_payload_;
+      limits.max_cartesian_jerk_accel = max_cartesian_jerk_accel_payload_;
+      limits.max_cartesian_jerk_decel = max_cartesian_jerk_decel_payload_;
+      limits.max_pitch_speed = max_pitch_speed_payload_;
+      limits.max_pitch_acceleration_accel = max_pitch_acceleration_accel_payload_;
+      limits.max_pitch_acceleration_decel = max_pitch_acceleration_decel_payload_;
+      limits.max_pitch_jerk_accel = max_pitch_jerk_accel_payload_;
+      limits.max_pitch_jerk_decel = max_pitch_jerk_decel_payload_;
+      return limits;
+    }
+
+    limits.max_cartesian_speed = max_cartesian_speed_empty_;
+    limits.max_cartesian_acceleration_accel = max_cartesian_acceleration_accel_empty_;
+    limits.max_cartesian_acceleration_decel = max_cartesian_acceleration_decel_empty_;
+    limits.max_cartesian_jerk_accel = max_cartesian_jerk_accel_empty_;
+    limits.max_cartesian_jerk_decel = max_cartesian_jerk_decel_empty_;
+    limits.max_pitch_speed = max_pitch_speed_empty_;
+    limits.max_pitch_acceleration_accel = max_pitch_acceleration_accel_empty_;
+    limits.max_pitch_acceleration_decel = max_pitch_acceleration_decel_empty_;
+    limits.max_pitch_jerk_accel = max_pitch_jerk_accel_empty_;
+    limits.max_pitch_jerk_decel = max_pitch_jerk_decel_empty_;
+    return limits;
+  }
+
+  static double ratio_limit_or_inf(double limit, double magnitude)
+  {
+    if (magnitude <= 1e-8) {
+      return std::numeric_limits<double>::infinity();
+    }
+    return limit / magnitude;
+  }
+
+  static double positive_limit_or_default(double value)
+  {
+    if (!std::isfinite(value)) {
+      return 1e6;
+    }
+    return std::max(1e-5, value);
   }
 
   static std::vector<double> make_open_uniform_knots(size_t control_point_count)
@@ -417,40 +538,71 @@ private:
     return out;
   }
 
-  double compute_path_velocity_limit(const Eigen::Vector4d & dpose_du) const
+  double compute_path_velocity_limit(const Eigen::Vector4d & dpose_du, const MotionLimits & limits) const
   {
-    const double tangent_norm = dpose_du.norm();
-    return std::max(1e-5, max_cartesian_speed_ / (tangent_norm + 1e-8));
+    const double linear_tangent_norm = dpose_du.head<3>().norm();
+    const double pitch_tangent_abs = std::abs(dpose_du(3));
+    const double linear_limit = ratio_limit_or_inf(limits.max_cartesian_speed, linear_tangent_norm);
+    const double pitch_limit = ratio_limit_or_inf(limits.max_pitch_speed, pitch_tangent_abs);
+    return positive_limit_or_default(std::min(linear_limit, pitch_limit));
   }
 
-  double max_cartesian_acceleration(MotionPhase phase) const
+  static double max_cartesian_acceleration(const MotionLimits & limits, MotionPhase phase)
   {
     return phase == MotionPhase::kDecelerating ?
-      max_cartesian_acceleration_decel_ : max_cartesian_acceleration_accel_;
+      limits.max_cartesian_acceleration_decel : limits.max_cartesian_acceleration_accel;
   }
 
-  double max_cartesian_jerk(MotionPhase phase) const
+  static double max_pitch_acceleration(const MotionLimits & limits, MotionPhase phase)
   {
     return phase == MotionPhase::kDecelerating ?
-      max_cartesian_jerk_decel_ : max_cartesian_jerk_accel_;
+      limits.max_pitch_acceleration_decel : limits.max_pitch_acceleration_accel;
+  }
+
+  static double max_cartesian_jerk(const MotionLimits & limits, MotionPhase phase)
+  {
+    return phase == MotionPhase::kDecelerating ?
+      limits.max_cartesian_jerk_decel : limits.max_cartesian_jerk_accel;
+  }
+
+  static double max_pitch_jerk(const MotionLimits & limits, MotionPhase phase)
+  {
+    return phase == MotionPhase::kDecelerating ?
+      limits.max_pitch_jerk_decel : limits.max_pitch_jerk_accel;
   }
 
   double compute_path_acceleration_limit(
     const Eigen::Vector4d & dpose_du,
     const Eigen::Vector4d & ddpose_du2,
     double u_dot,
-    MotionPhase phase) const
+    MotionPhase phase,
+    const MotionLimits & limits) const
   {
-    const double tangent_norm = dpose_du.norm();
-    const double curvature_norm = ddpose_du2.norm() * u_dot * u_dot;
-    const double avail = (max_cartesian_acceleration(phase) - curvature_norm) / (tangent_norm + 1e-8);
-    return std::max(1e-5, avail);
+    const double linear_tangent_norm = dpose_du.head<3>().norm();
+    const double pitch_tangent_abs = std::abs(dpose_du(3));
+    const double linear_curvature_norm = ddpose_du2.head<3>().norm() * u_dot * u_dot;
+    const double pitch_curvature_abs = std::abs(ddpose_du2(3)) * u_dot * u_dot;
+    const double linear_avail = ratio_limit_or_inf(
+      std::max(1e-5, max_cartesian_acceleration(limits, phase) - linear_curvature_norm),
+      linear_tangent_norm);
+    const double pitch_avail = ratio_limit_or_inf(
+      std::max(1e-5, max_pitch_acceleration(limits, phase) - pitch_curvature_abs),
+      pitch_tangent_abs);
+    return positive_limit_or_default(std::min(linear_avail, pitch_avail));
   }
 
-  double compute_path_jerk_limit(const Eigen::Vector4d & dpose_du, MotionPhase phase) const
+  double compute_path_jerk_limit(
+    const Eigen::Vector4d & dpose_du,
+    MotionPhase phase,
+    const MotionLimits & limits) const
   {
-    const double tangent_norm = dpose_du.norm();
-    return std::max(1e-5, max_cartesian_jerk(phase) / (tangent_norm + 1e-8));
+    const double linear_tangent_norm = dpose_du.head<3>().norm();
+    const double pitch_tangent_abs = std::abs(dpose_du(3));
+    const double linear_limit = ratio_limit_or_inf(
+      max_cartesian_jerk(limits, phase), linear_tangent_norm);
+    const double pitch_limit = ratio_limit_or_inf(
+      max_pitch_jerk(limits, phase), pitch_tangent_abs);
+    return positive_limit_or_default(std::min(linear_limit, pitch_limit));
   }
 
   double estimate_stop_distance(
@@ -479,6 +631,7 @@ private:
 
   bool build_cartesian_samples(
     const std::vector<Eigen::Vector4d> & anchors,
+    const MotionLimits & limits,
     std::vector<CartesianSample> & samples_out) const
   {
     constexpr double kCompletionUTolerance = 1e-4;
@@ -509,13 +662,15 @@ private:
 
     for (int step = 0; step < max_planning_steps_; ++step) {
       const PathDerivatives deriv = evaluate_path(curve, u);
-      const double v_limit = compute_path_velocity_limit(deriv.dp_du);
+      const double v_limit = compute_path_velocity_limit(deriv.dp_du, limits);
       const double a_accel_limit = compute_path_acceleration_limit(
-        deriv.dp_du, deriv.ddp_du2, u_dot, MotionPhase::kAccelerating);
+        deriv.dp_du, deriv.ddp_du2, u_dot, MotionPhase::kAccelerating, limits);
       const double a_decel_limit = compute_path_acceleration_limit(
-        deriv.dp_du, deriv.ddp_du2, u_dot, MotionPhase::kDecelerating);
-      const double j_accel_limit = compute_path_jerk_limit(deriv.dp_du, MotionPhase::kAccelerating);
-      const double j_decel_limit = compute_path_jerk_limit(deriv.dp_du, MotionPhase::kDecelerating);
+        deriv.dp_du, deriv.ddp_du2, u_dot, MotionPhase::kDecelerating, limits);
+      const double j_accel_limit = compute_path_jerk_limit(
+        deriv.dp_du, MotionPhase::kAccelerating, limits);
+      const double j_decel_limit = compute_path_jerk_limit(
+        deriv.dp_du, MotionPhase::kDecelerating, limits);
 
       const double remaining = 1.0 - u;
       const double stop_distance = estimate_stop_distance(
@@ -643,9 +798,10 @@ private:
       anchors.push_back(p);
     }
     unwrap_pitch_sequence(anchors);
+    const MotionLimits limits = current_motion_limits();
 
     std::vector<CartesianSample> planned;
-    if (!build_cartesian_samples(anchors, planned)) {
+    if (!build_cartesian_samples(anchors, limits, planned)) {
       RCLCPP_WARN(get_logger(), "Failed to plan Cartesian B-spline jerk trajectory.");
       return;
     }
@@ -668,13 +824,20 @@ private:
       get_logger(),
       "Accepted Cartesian path. waypoints=%zu samples=%zu duration=%.3f s "
       "start=[%.4f, %.4f, %.4f, %.4f] goal=[%.4f, %.4f, %.4f, %.4f] "
-      "xyz_dist=%.4f m xyz_arc=%.4f m pitch_delta=%.4f rad pitch_arc=%.4f rad",
+      "xyz_dist=%.4f m xyz_arc=%.4f m pitch_delta=%.4f rad pitch_arc=%.4f rad "
+      "limits={xyz_v=%.3f xyz_a+=%.3f xyz_a-=%.3f xyz_j+=%.3f xyz_j-=%.3f pitch_v=%.3f pitch_a+=%.3f pitch_a-=%.3f pitch_j+=%.3f pitch_j-=%.3f}",
       anchors.size() >= 2U ? anchors.size() - 2U : 0U,
       cartesian_samples_.size(),
       cartesian_samples_.size() * plan_dt_,
       start_pose(0), start_pose(1), start_pose(2), start_pose(3),
       goal_pose(0), goal_pose(1), goal_pose(2), goal_pose(3),
-      direct_position_distance, sampled_position_arc, direct_pitch_delta, sampled_pitch_arc);
+      direct_position_distance, sampled_position_arc, direct_pitch_delta, sampled_pitch_arc,
+      limits.max_cartesian_speed,
+      limits.max_cartesian_acceleration_accel, limits.max_cartesian_acceleration_decel,
+      limits.max_cartesian_jerk_accel, limits.max_cartesian_jerk_decel,
+      limits.max_pitch_speed,
+      limits.max_pitch_acceleration_accel, limits.max_pitch_acceleration_decel,
+      limits.max_pitch_jerk_accel, limits.max_pitch_jerk_decel);
   }
 
   void on_current_ee_pose(const std_msgs::msg::Float64MultiArray::SharedPtr msg)
@@ -819,12 +982,26 @@ private:
   std::string path_marker_topic_ {"/planned_cartesian_curve"};
   std::string payload_attached_topic_ {"/payload_attached"};
   bool payload_attached_ {false};
-
-  double max_cartesian_speed_ {0.3};
-  double max_cartesian_acceleration_accel_ {0.3};
-  double max_cartesian_acceleration_decel_ {0.18};
-  double max_cartesian_jerk_accel_ {5.0};
-  double max_cartesian_jerk_decel_ {2.5};
+  double max_cartesian_speed_empty_ {0.3};
+  double max_cartesian_speed_payload_ {0.3};
+  double max_cartesian_acceleration_accel_empty_ {0.3};
+  double max_cartesian_acceleration_accel_payload_ {0.3};
+  double max_cartesian_acceleration_decel_empty_ {0.18};
+  double max_cartesian_acceleration_decel_payload_ {0.18};
+  double max_cartesian_jerk_accel_empty_ {5.0};
+  double max_cartesian_jerk_accel_payload_ {5.0};
+  double max_cartesian_jerk_decel_empty_ {2.5};
+  double max_cartesian_jerk_decel_payload_ {2.5};
+  double max_pitch_speed_empty_ {0.3};
+  double max_pitch_speed_payload_ {0.3};
+  double max_pitch_acceleration_accel_empty_ {0.3};
+  double max_pitch_acceleration_accel_payload_ {0.3};
+  double max_pitch_acceleration_decel_empty_ {0.18};
+  double max_pitch_acceleration_decel_payload_ {0.18};
+  double max_pitch_jerk_accel_empty_ {5.0};
+  double max_pitch_jerk_accel_payload_ {5.0};
+  double max_pitch_jerk_decel_empty_ {2.5};
+  double max_pitch_jerk_decel_payload_ {2.5};
 
   double derivative_step_ {1e-3};
   int max_planning_steps_ {60000};
