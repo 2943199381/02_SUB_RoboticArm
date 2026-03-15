@@ -1,8 +1,9 @@
 cmake_minimum_required(VERSION 3.10)
 
-project(usb_host_driver LANGUAGES CXX)
+project(usb_host_driver LANGUAGES C CXX)
 
 add_executable(usb_recv
+  crc_ccitt.c
   UsbVcpDriver.cpp
   example_main.cpp
 )

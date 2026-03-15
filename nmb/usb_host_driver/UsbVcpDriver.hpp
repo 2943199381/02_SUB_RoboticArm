@@ -39,7 +39,7 @@ class UsbVcpDriver {
                  std::string* error = nullptr);
 
   static uint8_t crc8Maxim(const uint8_t* data, size_t length);
-  static uint16_t crc16Modbus(const uint8_t* data, size_t length);
+  static uint16_t crc16Ccitt(const uint8_t* data, size_t length);
 
  private:
   static constexpr uint8_t kSof = 0xA5;
@@ -52,7 +52,7 @@ class UsbVcpDriver {
   // [1..2] payload_len (LE)
   // [3..4] cmd_id (LE)
   // [5..] payload
-  // [end-2..end-1] CRC16(frame[0..end-3], LE)
+  // [end-2..end-1] CRC16-CCITT(frame[0..end-3], LE)
 
   bool configurePort(std::string* error);
   void appendBytes(const uint8_t* data, size_t size);

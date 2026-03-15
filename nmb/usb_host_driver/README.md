@@ -1,6 +1,6 @@
 # USB VCP C++ Driver (Linux)
 
-这是一个主机侧 C++ 驱动，用于接收 STM32 VCP 数据并解析带 `cmd_id`、`CRC16` 的数据帧。
+这是一个主机侧 C++ 驱动，用于接收 STM32 VCP 数据并解析带 `cmd_id`、`CRC16-CCITT` 的数据帧。
 
 ## 帧格式
 
@@ -8,7 +8,7 @@
 - 字节 1~2：`len`，2 字节小端，表示 `payload` 长度
 - 字节 3~4：`cmd_id`，2 字节小端
 - 字节 5~(5+len-1)：`payload`
-- 最后 2 字节：`crc16`（`CRC16-Modbus`，校验范围 `frame[0..end-3]`）
+- 最后 2 字节：`crc16`（`CRC16-CCITT`，校验范围 `frame[0..end-3]`）
 
 总长度：`1 + 2 + 2 + len + 2 = 7 + len`
 

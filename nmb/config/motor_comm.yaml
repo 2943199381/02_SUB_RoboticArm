@@ -1,0 +1,9 @@
+motor_comm_node:
+  ros__parameters:
+    tx_topic: /motor_tx_packet
+    rx_topic: /motor_rx_packet
+    io_cycle_ms: 2
+    serial_device: /dev/ttyACM0
+    baud_rate: 115200
+    usb_cmd_id: 1
+    poll_timeout_ms: 0

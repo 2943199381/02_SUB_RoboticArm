@@ -33,7 +33,7 @@ public:
   ArmControllerNode()
   : Node("arm_controller_node")
   {
-    control_hz_ = declare_parameter<double>("control_hz", 500.0);
+    control_hz_ = declare_parameter<double>("control_hz", 200.0);
     const auto legacy_kp_param = declare_parameter<std::vector<double>>(
       "kp", std::vector<double>{2.0, 2.0, 2.0, 0.0});
     const auto legacy_kd_param = declare_parameter<std::vector<double>>(
@@ -108,7 +108,7 @@ public:
 
     const auto period = std::chrono::duration<double>(1.0 / std::max(1.0, control_hz_));
     control_timer_ = create_wall_timer(
-      std::chrono::duration_cast<std::chrono::milliseconds>(period),
+      std::chrono::duration_cast<std::chrono::nanoseconds>(period),
       std::bind(&ArmControllerNode::control_loop, this));
 
     RCLCPP_INFO(
@@ -514,6 +514,10 @@ private:
     pinocchio::getFrameJacobian(
       ctx.model, *ctx.data, ctx.frame_id, pinocchio::LOCAL, J6_local);
 
+    // Reconstruct the task-space feedback wrench from the Jacobian transpose
+    // relation tau_feedback = J^T * wrench. We intentionally use tau_pd
+    // instead of the total torque so pickup verification reflects the
+    // unmodelled external load rather than nominal inverse-dynamics feedforward.
     const Eigen::Matrix<double, 3, 4> J_linear = J6_world_aligned.topRows<3>();
     Eigen::Matrix3d H_linear = J_linear * J_linear.transpose();
     H_linear.diagonal().array() += wrench_damping_;
@@ -580,6 +584,7 @@ private:
 
     const Eigen::Vector4d tau = tau_pd + tau_model;
     
+    
     publish_torque(tau);
     publish_motor_packet(tau);
   }
@@ -608,7 +613,7 @@ private:
   }
 
 private:
-  double control_hz_ {500.0};
+  double control_hz_ {200.0};
   Eigen::Vector4d kp_empty_ = Eigen::Vector4d::Zero();
   Eigen::Vector4d kd_empty_ = Eigen::Vector4d::Zero();
   Eigen::Vector4d kp_payload_ = Eigen::Vector4d::Zero();

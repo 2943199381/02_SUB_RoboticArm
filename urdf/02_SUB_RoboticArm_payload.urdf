@@ -333,12 +333,12 @@
       <mass
         value="0.63" />
       <inertia
-        ixx="0.0128625"
+        ixx="0.021317"
         ixy="0.0"
         ixz="0.0"
-        iyy="0.0128625"
+        iyy="0.021317"
         iyz="0.0"
-        izz="0.0128625" />
+        izz="0.021317" />
     </inertial>
     <visual>
       <origin

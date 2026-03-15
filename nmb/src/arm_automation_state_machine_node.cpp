@@ -53,8 +53,19 @@ public:
     expected_payload_mass_kg_ = std::max(
       0.0, declare_parameter<double>("expected_payload_mass_kg", 0.63));
     gravity_mps2_ = std::max(1e-6, declare_parameter<double>("gravity_mps2", 9.81));
-    pickup_force_tolerance_ratio_ = std::clamp(
+    const double legacy_pickup_force_tolerance_ratio = std::clamp(
       declare_parameter<double>("pickup_force_tolerance_ratio", 0.35), 0.01, 1.0);
+    const double default_pickup_force_n = expected_payload_force_n();
+    pickup_force_min_n_ = std::max(
+      0.0,
+      declare_parameter<double>(
+        "pickup_force_min_n",
+        std::max(0.0, default_pickup_force_n * (1.0 - legacy_pickup_force_tolerance_ratio))));
+    pickup_force_max_n_ = std::max(
+      pickup_force_min_n_,
+      declare_parameter<double>(
+        "pickup_force_max_n",
+        default_pickup_force_n * (1.0 + legacy_pickup_force_tolerance_ratio)));
     release_force_clear_ratio_ = std::clamp(
       declare_parameter<double>("release_force_clear_ratio", 0.35), 0.01, 1.0);
     release_clear_hold_sec_ = std::max(
@@ -99,7 +110,7 @@ public:
 
     const auto period = std::chrono::duration<double>(1.0 / automation_hz_);
     state_timer_ = create_wall_timer(
-      std::chrono::duration_cast<std::chrono::milliseconds>(period),
+      std::chrono::duration_cast<std::chrono::nanoseconds>(period),
       std::bind(&ArmAutomationStateMachineNode::on_state_timer, this));
 
     RCLCPP_INFO(
@@ -121,6 +132,7 @@ private:
     kPickupBlendingToPayload,
     kPickupReturning,
     kPickupRetryWait,
+    kPickupRetryApproaching,
     kPlaceBlendingToEmpty,
     kPlaceWaitContextSwitch,
     kPlaceLifting,
@@ -156,6 +168,8 @@ private:
         return "pickup_returning";
       case AutomationState::kPickupRetryWait:
         return "pickup_retry_wait";
+      case AutomationState::kPickupRetryApproaching:
+        return "pickup_retry_approaching";
       case AutomationState::kPlaceBlendingToEmpty:
         return "place_blending_to_empty";
       case AutomationState::kPlaceWaitContextSwitch:
@@ -191,12 +205,12 @@ private:
 
   double pickup_force_min_n() const
   {
-    return std::max(0.0, expected_payload_force_n() * (1.0 - pickup_force_tolerance_ratio_));
+    return pickup_force_min_n_;
   }
 
   double pickup_force_max_n() const
   {
-    return expected_payload_force_n() * (1.0 + pickup_force_tolerance_ratio_);
+    return pickup_force_max_n_;
   }
 
   double release_force_max_n() const
@@ -316,8 +330,34 @@ private:
   {
     prepare_pose_ = current_pose_;
     has_prepare_pose_ = true;
-    request_cartesian_target(make_lift_target(prepare_pose_), "Pickup lift request");
-    set_automation_state(AutomationState::kPickupLifting, "Start pickup sequence");
+    request_pickup_lift_from_prepare_pose("Pickup lift request", "Start pickup sequence");
+  }
+
+  void request_pickup_lift_from_prepare_pose(
+    const std::string & request_reason,
+    const std::string & transition_reason)
+  {
+    if (!has_prepare_pose_) {
+      set_automation_state(AutomationState::kIdle, transition_reason + " without prepare pose");
+      return;
+    }
+
+    request_cartesian_target(make_lift_target(prepare_pose_), request_reason);
+    set_automation_state(AutomationState::kPickupLifting, transition_reason);
+  }
+
+  void request_pickup_retry_approach()
+  {
+    if (!has_prepare_pose_) {
+      set_automation_state(AutomationState::kIdle, "Retry pickup requested without prepare pose");
+      return;
+    }
+
+    publish_payload_suction_cmd(true, "Pickup retry suction request");
+    request_cartesian_target(prepare_pose_, "Pickup retry grasp pose request");
+    set_automation_state(
+      AutomationState::kPickupRetryApproaching,
+      "Retry pickup by replanning to grasp pose");
   }
 
   void begin_place_sequence()
@@ -506,12 +546,18 @@ private:
         if (automation_state_elapsed_sec() < retry_wait_sec_) {
           return;
         }
-        if (!has_prepare_pose_) {
-          set_automation_state(AutomationState::kIdle, "Retry wait ended without prepare pose");
-          return;
+        request_pickup_retry_approach();
+        return;
+
+      case AutomationState::kPickupRetryApproaching:
+        if (has_prepare_pose_ && pose_reached(prepare_pose_)) {
+          request_pickup_lift_from_prepare_pose(
+            "Pickup retry lift request",
+            "Retry pickup after grasp replan");
+        } else if (automation_state_elapsed_sec() >= motion_timeout_sec_) {
+          RCLCPP_WARN(get_logger(), "Pickup retry grasp replan timed out. Waiting before retry.");
+          set_automation_state(AutomationState::kPickupRetryWait, "Pickup retry grasp pose timeout");
         }
-        request_cartesian_target(make_lift_target(prepare_pose_), "Pickup retry lift request");
-        set_automation_state(AutomationState::kPickupLifting, "Retry pickup");
         return;
 
       case AutomationState::kPlaceBlendingToEmpty:
@@ -627,7 +673,8 @@ private:
   double joint_stopped_velocity_tolerance_ {0.08};
   double expected_payload_mass_kg_ {0.63};
   double gravity_mps2_ {9.81};
-  double pickup_force_tolerance_ratio_ {0.35};
+  double pickup_force_min_n_ {0.0};
+  double pickup_force_max_n_ {0.0};
   double release_force_clear_ratio_ {0.35};
   double release_clear_hold_sec_ {0.30};
 

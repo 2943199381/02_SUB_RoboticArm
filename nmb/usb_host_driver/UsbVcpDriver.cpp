@@ -1,4 +1,5 @@
 #include "UsbVcpDriver.hpp"
+#include "crc_ccitt.h"
 
 #include <cerrno>
 #include <cstring>
@@ -219,7 +220,7 @@ bool UsbVcpDriver::sendFrame(uint16_t cmdId,
   frame.push_back(static_cast<uint8_t>((cmdId >> 8) & 0xFF));
   frame.insert(frame.end(), payload.begin(), payload.end());
 
-  const uint16_t crc = crc16Modbus(frame.data(), frame.size());
+  const uint16_t crc = crc16Ccitt(frame.data(), frame.size());
   frame.push_back(static_cast<uint8_t>(crc & 0xFF));
   frame.push_back(static_cast<uint8_t>((crc >> 8) & 0xFF));
 
@@ -241,19 +242,8 @@ uint8_t UsbVcpDriver::crc8Maxim(const uint8_t* data, size_t length) {
   return crc;
 }
 
-uint16_t UsbVcpDriver::crc16Modbus(const uint8_t* data, size_t length) {
-  uint16_t crc = 0xFFFF;
-  for (size_t i = 0; i < length; ++i) {
-    crc ^= data[i];
-    for (int bit = 0; bit < 8; ++bit) {
-      if ((crc & 0x0001U) != 0U) {
-        crc = static_cast<uint16_t>((crc >> 1) ^ 0xA001U);
-      } else {
-        crc = static_cast<uint16_t>(crc >> 1);
-      }
-    }
-  }
-  return crc;
+uint16_t UsbVcpDriver::crc16Ccitt(const uint8_t* data, size_t length) {
+  return crc_ccitt(0xFFFFU, data, length);
 }
 
 bool UsbVcpDriver::configurePort(std::string* error) {
@@ -345,7 +335,7 @@ bool UsbVcpDriver::parseBuffer(const FrameCallback& callback) {
 
     const uint16_t recvCrc =
         static_cast<uint16_t>(rxBuffer_[fullLen - 2] | (rxBuffer_[fullLen - 1] << 8));
-    const uint16_t calcCrc = crc16Modbus(rxBuffer_.data(), fullLen - kCrcSize);
+    const uint16_t calcCrc = crc16Ccitt(rxBuffer_.data(), fullLen - kCrcSize);
     if (recvCrc == calcCrc) {
       ProtocolFrame frame;
       frame.cmdId = static_cast<uint16_t>(rxBuffer_[3] | (rxBuffer_[4] << 8));

@@ -23,6 +23,8 @@ def generate_launch_description():
         pkg_share, "config", "trajectory_bspline_jerk_planner.yaml")
     default_cartesian_ik_mapper_params_path = os.path.join(
         pkg_share, "config", "cartesian_ik_mapper.yaml")
+    default_motor_comm_params_path = os.path.join(
+        pkg_share, "config", "motor_comm.yaml")
     default_ros_domain_config_path = os.path.join(pkg_share, "config", "ros_domain.yaml")
     default_rviz_config_path = os.path.join(pkg_share, "rviz", "robot_arm.rviz")
 
@@ -82,6 +84,12 @@ def generate_launch_description():
         "cartesian_ik_mapper_params",
         default_value=default_cartesian_ik_mapper_params_path,
         description="Absolute path to cartesian_ik_mapper_node parameter YAML file",
+    )
+
+    motor_comm_params_arg = DeclareLaunchArgument(
+        "motor_comm_params",
+        default_value=default_motor_comm_params_path,
+        description="Absolute path to motor_comm_node parameter YAML file",
     )
 
     rviz_config_arg = DeclareLaunchArgument(
@@ -149,6 +157,9 @@ def generate_launch_description():
         executable="motor_comm_node",
         name="motor_comm_node",
         output="screen",
+        parameters=[
+            LaunchConfiguration("motor_comm_params"),
+        ],
     )
 
     mujoco_joint_sim = Node(
@@ -161,7 +172,7 @@ def generate_launch_description():
             {
                 "model_path": LaunchConfiguration("mujoco_model_path"),
                 "dof": 4,
-                "sim_hz": 500.0,
+                "sim_hz": 200.0,
                 "joint_state_topic": "/joint_states",
                 "torque_topic": "/joint_torque_cmd",
                 "payload_attached_topic": "/payload_attached",
@@ -169,6 +180,7 @@ def generate_launch_description():
                 "payload_enabled": True,
                 "payload_suction_cmd_topic": "/payload_suction_cmd",
                 "payload_grasped_topic": "/payload_grasped",
+                "publish_payload_grasped": False,
                 "payload_initial_pose": [0.30, 0.00, 0.015],
                 "payload_initial_yaw_rad": 0.0,
                 "payload_attach_distance_threshold_m": 0.03,
@@ -228,6 +240,7 @@ def generate_launch_description():
         arm_automation_params_arg,
         trajectory_bspline_params_arg,
         cartesian_ik_mapper_params_arg,
+        motor_comm_params_arg,
         rviz_config_arg,
         ros_domain_env,
         trajectory_bspline_planner,

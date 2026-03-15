@@ -1,6 +1,6 @@
 <mujoco model="02_SUB_RoboticArm">
   <compiler angle="radian" meshdir="./"/>
-  <option timestep="0.002"/>
+  <option timestep="0.005"/>
 
   <asset>
     <mesh name="base_link" file="base_link.STL"/>
@@ -82,7 +82,7 @@
 
     <body name="payload_center_link" pos="0.30 0.00 0.015">
       <freejoint name="payload_freejoint"/>
-      <inertial pos="0 0 0" quat="1 0 0 0" mass="0.63" diaginertia="0.0128625 0.0128625 0.0128625"/>
+      <inertial pos="0 0 0" quat="1 0 0 0" mass="0.63" diaginertia="0.021317 0.021317 0.021317"/>
       <site
         name="payload_grasp_site"
         pos="0 0.175 0"

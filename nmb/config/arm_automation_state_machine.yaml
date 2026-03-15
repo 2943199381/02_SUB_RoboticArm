@@ -26,6 +26,7 @@ arm_automation_state_machine_node:
     joint_stopped_velocity_tolerance: 0.08
     expected_payload_mass_kg: 0.63
     gravity_mps2: 9.81
-    pickup_force_tolerance_ratio: 0.95
+    pickup_force_min_n: 0.2
+    pickup_force_max_n: 9.3
     release_force_clear_ratio: 0.35
     release_clear_hold_sec: 0.3

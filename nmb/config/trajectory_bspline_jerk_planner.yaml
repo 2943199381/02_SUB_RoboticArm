@@ -2,7 +2,7 @@ trajectory_bspline_jerk_planner_node:
   ros__parameters:
     payload_attached_topic: /payload_attached
     payload_attached_initial: false
-    planner_hz: 500.0
+    planner_hz: 200.0
     max_cartesian_speed_empty: 0.5
     max_cartesian_speed_payload: 0.35
     max_cartesian_acceleration_accel_empty: 0.5
@@ -25,5 +25,5 @@ trajectory_bspline_jerk_planner_node:
     max_pitch_jerk_decel_empty: 2.5
     max_pitch_jerk_decel_payload: 1.8
 
-    derivative_step: 0.001
+    derivative_step: 0.002
     max_planning_steps: 60000

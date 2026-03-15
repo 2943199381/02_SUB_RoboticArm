@@ -15,6 +15,7 @@ find_package(trajectory_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(Eigen3 REQUIRED)
+find_package(Threads REQUIRED)
 find_package(pinocchio QUIET)
 find_package(ruckig QUIET)
 # uncomment the following section in order to fill in
@@ -58,12 +59,19 @@ ament_target_dependencies(
 )
 target_link_libraries(arm_automation_state_machine_node Eigen3::Eigen)
 
-add_executable(motor_comm_node src/motor_comm_node.cpp)
+add_executable(motor_comm_node
+  src/motor_comm_node.cpp
+  usb_host_driver/UsbVcpDriver.cpp
+  usb_host_driver/crc_ccitt.c
+)
+target_include_directories(motor_comm_node PRIVATE usb_host_driver)
+target_compile_features(motor_comm_node PRIVATE cxx_std_17)
 ament_target_dependencies(
   motor_comm_node
   rclcpp
   std_msgs
 )
+target_link_libraries(motor_comm_node Threads::Threads)
 
 add_executable(trajectory_bspline_jerk_planner_node src/trajectory_bspline_jerk_planner_node.cpp)
 target_include_directories(trajectory_bspline_jerk_planner_node PRIVATE include)

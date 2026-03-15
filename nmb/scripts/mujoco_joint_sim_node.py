@@ -40,6 +40,8 @@ class MujocoJointSimNode(Node):
             self.declare_parameter("payload_suction_cmd_topic", "/payload_suction_cmd").value)
         self.payload_grasped_topic = str(
             self.declare_parameter("payload_grasped_topic", "/payload_grasped").value)
+        self.publish_payload_grasped = bool(
+            self.declare_parameter("publish_payload_grasped", True).value)
         self.enable_viewer = bool(self.declare_parameter("enable_viewer", True).value)
 
         # Payload grasp/placement parameters.
@@ -52,7 +54,7 @@ class MujocoJointSimNode(Node):
             self.declare_parameter("payload_attach_distance_threshold_m", 0.03).value)
 
         # Timing parameters.
-        self.sim_hz = float(self.declare_parameter("sim_hz", 500.0).value)
+        self.sim_hz = float(self.declare_parameter("sim_hz", 200.0).value)
         self.max_substeps_per_tick = int(self.declare_parameter("max_substeps_per_tick", 32).value)
         self.max_elapsed_per_tick_sec = float(self.declare_parameter("max_elapsed_per_tick_sec", 0.1).value)
         self.viewer_sync_hz = float(self.declare_parameter("viewer_sync_hz", 60.0).value)
@@ -116,7 +118,9 @@ class MujocoJointSimNode(Node):
         self.startup_delay_released = False
 
         self.joint_state_pub = self.create_publisher(JointState, self.joint_state_topic, 20)
-        self.payload_grasped_pub = self.create_publisher(Bool, self.payload_grasped_topic, 10)
+        self.payload_grasped_pub = None
+        if self.publish_payload_grasped and self.payload_grasped_topic:
+            self.payload_grasped_pub = self.create_publisher(Bool, self.payload_grasped_topic, 10)
         self.torque_sub = self.create_subscription(Float64MultiArray, self.torque_topic, self.on_torque_cmd, 20)
         self.payload_sub = self.create_subscription(Bool, self.payload_attached_topic, self.on_payload_attached, 20)
         self.payload_suction_cmd_sub = self.create_subscription(
@@ -139,7 +143,7 @@ class MujocoJointSimNode(Node):
             f"startup_delay_sec={self.startup_delay_sec:.3f} "
             f"payload_topic={self.payload_attached_topic} "
             f"payload_enabled={self.payload_enabled} "
-            f"payload_grasped_topic={self.payload_grasped_topic} "
+            f"payload_grasped_topic={self.payload_grasped_topic if self.payload_grasped_pub else 'disabled'} "
             f"payload_initial_pose={self.payload_initial_pose.tolist()}"
         )
         if abs(self.timer_period - self.model_dt) > 1e-6:
@@ -484,6 +488,8 @@ class MujocoJointSimNode(Node):
                 )
 
     def _publish_payload_grasped(self) -> None:
+        if self.payload_grasped_pub is None:
+            return
         msg = Bool()
         msg.data = bool(self.payload_enabled and self.payload_grasped)
         self.payload_grasped_pub.publish(msg)
