@@ -207,6 +207,19 @@ private:
     for (size_t i = 0; i < nvel; ++i) {
       dq_(static_cast<Eigen::Index>(i)) = msg->velocity[i];
     }
+
+    has_joint_state_ = npos == static_cast<size_t>(kDof);
+    if (!has_recorded_hold_q_ && has_joint_state_) {
+      recorded_hold_q_ = q_;
+      desired_q_ = recorded_hold_q_;
+      desired_dq_.setZero();
+      desired_ddq_.setZero();
+      has_recorded_hold_q_ = true;
+      RCLCPP_INFO(
+        get_logger(),
+        "Recorded controller hold origin from joint state: [%.3f %.3f %.3f %.3f]",
+        recorded_hold_q_(0), recorded_hold_q_(1), recorded_hold_q_(2), recorded_hold_q_(3));
+    }
   }
 
   void on_planned_joint_state(const sensor_msgs::msg::JointState::SharedPtr msg)
@@ -537,7 +550,7 @@ private:
     refresh_blend_state();
 
     if (!has_planned_state_) {
-      desired_q_ = initial_hold_q_;
+      desired_q_ = has_recorded_hold_q_ ? recorded_hold_q_ : initial_hold_q_;
       desired_dq_.setZero();
       desired_ddq_.setZero();
     }
@@ -616,11 +629,14 @@ private:
 
   Eigen::Vector4d q_ = Eigen::Vector4d::Zero();
   Eigen::Vector4d dq_ = Eigen::Vector4d::Zero();
+  bool has_joint_state_ {false};
 
   Eigen::Vector4d desired_q_ = Eigen::Vector4d::Zero();
   Eigen::Vector4d desired_dq_ = Eigen::Vector4d::Zero();
   Eigen::Vector4d desired_ddq_ = Eigen::Vector4d::Zero();
   bool has_planned_state_ {false};
+  Eigen::Vector4d recorded_hold_q_ = Eigen::Vector4d::Zero();
+  bool has_recorded_hold_q_ {false};
 
   double blend_start_alpha_ {0.0};
   double blend_target_alpha_ {0.0};

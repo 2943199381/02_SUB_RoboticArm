@@ -809,8 +809,6 @@ private:
     publish_path_marker(cartesian_samples_);
     sample_index_ = 0;
     trajectory_active_ = true;
-    waiting_for_task_frame_sync_ = false;
-    has_last_sample_ = false;
 
     const Eigen::Vector4d & start_pose = anchors.front();
     const Eigen::Vector4d & goal_pose = anchors.back();
@@ -848,17 +846,6 @@ private:
       current_ee_pose_(i) = msg->data[static_cast<size_t>(i)];
     }
     has_current_ee_pose_ = true;
-
-    if (waiting_for_task_frame_sync_) {
-      last_sample_.p = current_ee_pose_;
-      last_sample_.dp.setZero();
-      last_sample_.ddp.setZero();
-      has_last_sample_ = true;
-      waiting_for_task_frame_sync_ = false;
-      RCLCPP_INFO(
-        get_logger(),
-        "Synchronized Cartesian hold state to refreshed task frame pose after payload switch.");
-    }
   }
 
   void on_payload_attached(const std_msgs::msg::Bool::SharedPtr msg)
@@ -869,21 +856,16 @@ private:
 
     payload_attached_ = msg->data;
     clear_planned_path(true);
-    has_last_sample_ = false;
-    waiting_for_task_frame_sync_ = true;
 
     RCLCPP_INFO(
       get_logger(),
-      "Payload state changed to %s. Cleared active Cartesian trajectory and waiting for a refreshed task-frame pose before holding.",
+      "Payload state changed to %s. Cleared active Cartesian trajectory.",
       payload_attached_ ? "attached" : "detached");
   }
 
   void planner_loop()
   {
     if (!trajectory_active_) {
-      if (has_last_sample_) {
-        publish_cartesian_state(last_sample_);
-      }
       return;
     }
 
@@ -894,9 +876,6 @@ private:
 
     const CartesianSample & sample = cartesian_samples_[sample_index_];
     publish_cartesian_state(sample);
-    
-    last_sample_ = sample;
-    has_last_sample_ = true;
 
     ++sample_index_;
     if (sample_index_ >= cartesian_samples_.size()) {
@@ -1010,9 +989,6 @@ private:
   std::vector<CartesianSample> cartesian_samples_;
   size_t sample_index_ {0};
   bool trajectory_active_ {false};
-  CartesianSample last_sample_;
-  bool has_last_sample_ {false};
-  bool waiting_for_task_frame_sync_ {false};
 
   rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr current_ee_pose_sub_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr payload_state_sub_;
