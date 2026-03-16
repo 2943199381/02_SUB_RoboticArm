@@ -79,10 +79,12 @@ public:
       joint_state_pub_ = create_publisher<sensor_msgs::msg::JointState>(joint_state_topic_, 50);
     }
 
-    io_timer_ = create_wall_timer(
+    send_timer_ = create_wall_timer(
       std::chrono::milliseconds(std::max(io_cycle_ms_, 1)),
-      std::bind(&MotorCommNode::io_once, this));
+      std::bind(&MotorCommNode::send_once, this));
 
+      if (!driver_->startReceiveThread(std::bind(&MotorCommNode::handle_received_frame, this, std::placeholders::_1), &error)) {
+      std::cerr << "start receive thread failed: " << error << "\n";}
     RCLCPP_INFO(
       get_logger(),
       "motor_comm_node started. torque_topic=%s rx_topic=%s joint_state_topic=%s publish_joint_state_from_usb=%s send_cmd_id=%u joint_state_cmd_id=%u serial_device=%s baud_rate=%d",
@@ -106,7 +108,7 @@ private:
     has_pending_tx_ = true;
   }
 
-  void io_once()
+  void send_once()
   {
     if (!ensure_driver_open()) {
       return;
@@ -115,8 +117,7 @@ private:
     if (has_pending_tx_) {
       send_pending_packet();
     }
-
-    poll_driver_once();
+    // poll_driver_once();
   }
 
   bool ensure_driver_open()
@@ -137,7 +138,11 @@ private:
         serial_device_.c_str(), baud_rate_, error.c_str());
       return false;
     }
-
+    if (!driver_->startReceiveThread(std::bind(&MotorCommNode::handle_received_frame, this, std::placeholders::_1), &error)) {
+        RCLCPP_ERROR(get_logger(), "Failed to restart receive thread after reconnect: %s", error.c_str());
+        driver_->closePort(); // 线程起不来，干脆关掉等下次重试
+        return false;
+    }
     RCLCPP_INFO(
       get_logger(),
       "Opened motor USB device %s @ %d",
@@ -165,21 +170,21 @@ private:
     has_pending_tx_ = false;
   }
 
-  void poll_driver_once()
-  {
-    std::string error;
-    const auto frame_cb = [this](const usb_host::ProtocolFrame & frame) {
-      handle_received_frame(frame);
-    };
+  // void poll_driver_once()
+  // {
+  //   std::string error;
+  //   const auto frame_cb = [this](const usb_host::ProtocolFrame & frame) {
+  //     handle_received_frame(frame);
+  //   };
 
-    if (!driver_->pollOnce(frame_cb, poll_timeout_ms_, &error)) {
-      RCLCPP_ERROR_THROTTLE(
-        get_logger(), *get_clock(), 2000,
-        "Failed to poll motor USB device: %s",
-        error.c_str());
-      driver_->closePort();
-    }
-  }
+  //   if (!driver_->pollOnce(frame_cb, poll_timeout_ms_, &error)) {
+  //     RCLCPP_ERROR_THROTTLE(
+  //       get_logger(), *get_clock(), 2000,
+  //       "Failed to poll motor USB device: %s",
+  //       error.c_str());
+  //     driver_->closePort();
+  //   }
+  // }
 
   void handle_received_frame(const usb_host::ProtocolFrame & frame)
   {
@@ -270,7 +275,8 @@ private:
   rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr torque_sub_;
   rclcpp::Publisher<std_msgs::msg::UInt8MultiArray>::SharedPtr rx_pub_;
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_pub_;
-  rclcpp::TimerBase::SharedPtr io_timer_;
+  rclcpp::TimerBase::SharedPtr send_timer_;
+  std::string error;
 };
 
 int main(int argc, char ** argv)
