@@ -555,7 +555,8 @@ private:
     refresh_blend_state();
 
     if (!has_planned_state_) {
-      desired_q_ = has_recorded_hold_q_ ? recorded_hold_q_ : initial_hold_q_;
+      // desired_q_ = has_recorded_hold_q_ ? recorded_hold_q_ : initial_hold_q_;
+      desired_q_ = has_recorded_hold_q_ ? recorded_hold_q_ : q_;
       desired_dq_.setZero();
       desired_ddq_.setZero();
     }

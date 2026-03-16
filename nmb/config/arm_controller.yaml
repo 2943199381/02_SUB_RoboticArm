@@ -15,4 +15,4 @@ arm_controller_node:
     kd_payload: [40.0, 40.0, 40.0, 1.0]
     model_blend_duration_sec: 0.5
     wrench_damping: 0.001
-    armature: [0.0, 0.0, 0.0, 0.0]
+    armature: [0.0, 0.0, 0.0, 0.0]     #转子惯量N²*I
