@@ -69,6 +69,7 @@ target_compile_features(motor_comm_node PRIVATE cxx_std_17)
 ament_target_dependencies(
   motor_comm_node
   rclcpp
+  sensor_msgs
   std_msgs
 )
 target_link_libraries(motor_comm_node Threads::Threads)

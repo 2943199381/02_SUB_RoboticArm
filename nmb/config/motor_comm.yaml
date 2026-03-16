@@ -1,9 +1,13 @@
 motor_comm_node:
   ros__parameters:
-    tx_topic: /motor_tx_packet
     rx_topic: /motor_rx_packet
+    torque_topic: /joint_torque_cmd
     io_cycle_ms: 2
     serial_device: /dev/ttyACM0
     baud_rate: 115200
-    usb_cmd_id: 1
+    send_cmd_id: 1
+    joint_state_cmd_id: 1010
     poll_timeout_ms: 0
+    publish_joint_state_from_usb: false
+    joint_state_topic: /joint_states
+    joint_names: [j1, j2, j3, j4]

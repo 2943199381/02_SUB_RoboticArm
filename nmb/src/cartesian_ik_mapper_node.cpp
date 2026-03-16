@@ -39,9 +39,6 @@ public:
     payload_attached_topic_ = declare_parameter<std::string>("payload_attached_topic", "/payload_attached");
     payload_attached_ = declare_parameter<bool>("payload_attached_initial", false);
 
-    ik_hz_ = std::max(1.0, declare_parameter<double>("ik_hz", 500.0));
-    dt_ = 1.0 / ik_hz_;
-
     const auto ik_iters_param = declare_parameter<int64_t>("ik_max_iters", 200);
     ik_max_iters_ = static_cast<int>(std::max<int64_t>(1, ik_iters_param));
     ik_tolerance_ = std::max(1e-6, declare_parameter<double>("ik_tolerance", 1e-3));
@@ -96,8 +93,8 @@ public:
 
     RCLCPP_INFO(
       get_logger(),
-      "cartesian_ik_mapper_node started. input=/planned_cartesian_state output=/planned_joint_state ik_hz=%.1f dt=%.6f payload_topic=%s",
-      ik_hz_, dt_, payload_attached_topic_.c_str());
+      "cartesian_ik_mapper_node started. input=/planned_cartesian_state output=/planned_joint_state payload_topic=%s",
+      payload_attached_topic_.c_str());
   }
 
 private:
@@ -500,9 +497,6 @@ private:
   }
 
 private:
-  double ik_hz_ {500.0};
-  double dt_ {1.0 / 500.0};
-
   std::string urdf_path_empty_;
   std::string urdf_path_payload_;
   std::string task_frame_empty_;

@@ -10,7 +10,6 @@
 #include "sensor_msgs/msg/joint_state.hpp"
 #include "std_msgs/msg/bool.hpp"
 #include "std_msgs/msg/float64_multi_array.hpp"
-#include "std_msgs/msg/u_int8_multi_array.hpp"
 
 #if __has_include(<pinocchio/algorithm/frames.hpp>) && \
   __has_include(<pinocchio/algorithm/jacobian.hpp>) && \
@@ -44,11 +43,13 @@ public:
     const auto kd_payload_param = declare_parameter<std::vector<double>>("kd_payload", kd_empty_param);
     const auto initial_hold_q_param = declare_parameter<std::vector<double>>(
       "initial_hold_q", std::vector<double>{0.0, 0.0, 0.0, 0.0});
+    const auto armature_param = declare_parameter<std::vector<double>>("armature", std::vector<double>{0.0, 0.0, 0.0, 0.0});
     kp_empty_ = vector_param_to_eigen4(kp_empty_param, 20.0);
     kd_empty_ = vector_param_to_eigen4(kd_empty_param, 1.0);
     kp_payload_ = vector_param_to_eigen4(kp_payload_param, 20.0);
     kd_payload_ = vector_param_to_eigen4(kd_payload_param, 1.0);
     initial_hold_q_ = vector_param_to_eigen4(initial_hold_q_param, 0.0);
+    armature_values = vector_param_to_eigen4(armature_param, 0.0);
 
     const std::string legacy_urdf_path = declare_parameter<std::string>("urdf_path", "");
     const std::string legacy_task_frame = declare_parameter<std::string>("ee_frame", "ee_link");
@@ -86,7 +87,6 @@ public:
       std::bind(&ArmControllerNode::on_model_transition_cmd, this, std::placeholders::_1));
 
     torque_pub_ = create_publisher<std_msgs::msg::Float64MultiArray>("/joint_torque_cmd", 10);
-    motor_tx_pub_ = create_publisher<std_msgs::msg::UInt8MultiArray>("/motor_tx_packet", 20);
     current_task_pose_pub_ = create_publisher<std_msgs::msg::Float64MultiArray>("/current_ee_pose_pitch", 10);
     pd_task_wrench_pub_ = create_publisher<std_msgs::msg::Float64MultiArray>(pd_task_wrench_topic_, 10);
     model_blend_status_pub_ = create_publisher<std_msgs::msg::Float64MultiArray>(model_blend_status_topic_, 10);
@@ -326,6 +326,7 @@ private:
 
     try {
       pinocchio::urdf::buildModel(ctx.urdf_path, ctx.model);
+      ctx.model.armature = armature_values;
       ctx.data = std::make_unique<pinocchio::Data>(ctx.model);
       ctx.frame_id = ctx.model.getFrameId(ctx.task_frame);
       if (ctx.frame_id >= ctx.model.frames.size()) {
@@ -583,10 +584,8 @@ private:
     publish_blend_status();
 
     const Eigen::Vector4d tau = tau_pd + tau_model;
-    
-    
+
     publish_torque(tau);
-    publish_motor_packet(tau);
   }
 
   void publish_torque(const Eigen::Vector4d & tau)
@@ -597,19 +596,6 @@ private:
       msg.data[static_cast<size_t>(i)] = tau(i);
     }
     torque_pub_->publish(msg);
-  }
-
-  void publish_motor_packet(const Eigen::Vector4d & tau)
-  {
-    std_msgs::msg::UInt8MultiArray packet;
-    packet.data.reserve(static_cast<size_t>(kDof) * 2);
-    for (int i = 0; i < kDof; ++i) {
-      const double t = tau(i);
-      const int16_t scaled = static_cast<int16_t>(std::round(std::clamp(t, -32.0, 32.0) * 1000.0));
-      packet.data.push_back(static_cast<uint8_t>(scaled & 0xFF));
-      packet.data.push_back(static_cast<uint8_t>((scaled >> 8) & 0xFF));
-    }
-    motor_tx_pub_->publish(packet);
   }
 
 private:
@@ -631,6 +617,7 @@ private:
   std::string pd_task_wrench_topic_;
   double model_blend_duration_sec_ {0.50};
   double wrench_damping_ {1e-3};
+  Eigen::Vector4d armature_values = Eigen::Vector4d::Zero();
 
   Eigen::Vector4d q_ = Eigen::Vector4d::Zero();
   Eigen::Vector4d dq_ = Eigen::Vector4d::Zero();
@@ -660,7 +647,6 @@ private:
   rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr model_transition_cmd_sub_;
 
   rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr torque_pub_;
-  rclcpp::Publisher<std_msgs::msg::UInt8MultiArray>::SharedPtr motor_tx_pub_;
   rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr current_task_pose_pub_;
   rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr pd_task_wrench_pub_;
   rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr model_blend_status_pub_;

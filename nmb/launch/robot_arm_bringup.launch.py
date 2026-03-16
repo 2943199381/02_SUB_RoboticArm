@@ -6,6 +6,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.actions import SetEnvironmentVariable
 from launch.conditions import IfCondition
+from launch.conditions import UnlessCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 import yaml
@@ -152,14 +153,18 @@ def generate_launch_description():
         ],
     )
 
-    motor_comm = Node(
+    motor_comm_hw = Node(
         package="nmb",
         executable="motor_comm_node",
         name="motor_comm_node",
         output="screen",
         parameters=[
             LaunchConfiguration("motor_comm_params"),
+            {
+                "publish_joint_state_from_usb": True,
+            },
         ],
+        condition=UnlessCondition(LaunchConfiguration("use_mujoco_sim")),
     )
 
     mujoco_joint_sim = Node(
@@ -245,7 +250,7 @@ def generate_launch_description():
         ros_domain_env,
         trajectory_bspline_planner,
         cartesian_ik_mapper,
-        motor_comm,
+        motor_comm_hw,
         arm_controller,
         arm_automation,
         mujoco_joint_sim,
