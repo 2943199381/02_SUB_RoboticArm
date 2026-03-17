@@ -16,7 +16,7 @@ public:
   ArmAutomationStateMachineNode()
   : Node("arm_automation_state_machine_node")
   {
-    automation_hz_ = std::max(1.0, declare_parameter<double>("automation_hz", 200.0));
+    automation_hz_ = std::max(1.0, declare_parameter<double>("automation_hz", 500.0));
     automation_start_topic_ = declare_parameter<std::string>("automation_start_topic", "/arm_control/start");
     current_pose_topic_ = declare_parameter<std::string>("current_pose_topic", "/current_ee_pose_pitch");
     joint_state_topic_ = declare_parameter<std::string>("joint_state_topic", "/joint_states");
@@ -646,7 +646,7 @@ private:
   }
 
 private:
-  double automation_hz_ {200.0};
+  double automation_hz_ {500.0};
   std::string automation_start_topic_;
   std::string current_pose_topic_;
   std::string joint_state_topic_;

@@ -1,6 +1,6 @@
 arm_automation_state_machine_node:
   ros__parameters:
-    automation_hz: 200.0
+    automation_hz: 500.0
     automation_start_topic: /arm_control/start
     current_pose_topic: /current_ee_pose_pitch
     joint_state_topic: /joint_states

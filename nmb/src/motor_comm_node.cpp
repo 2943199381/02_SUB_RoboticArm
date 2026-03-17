@@ -19,8 +19,8 @@ using namespace std::chrono_literals;
 
 namespace {
 
-constexpr uint16_t kDefaultSendCmdId = 0x0001;
-constexpr uint16_t kDefaultJointStateCmdId = 1010;
+constexpr uint16_t kDefaultSendCmdId = 0x0101;
+constexpr uint16_t kDefaultJointStateCmdId = 0x0011;
 constexpr size_t kJointStateDof = 4;
 constexpr size_t kJointStateFloatCount = 8;
 
@@ -64,6 +64,11 @@ public:
     send_cmd_id_ = static_cast<uint16_t>(declare_parameter<int>("send_cmd_id", legacy_usb_cmd_id));
     joint_state_cmd_id_ = static_cast<uint16_t>(
       declare_parameter<int>("joint_state_cmd_id", kDefaultJointStateCmdId));
+    RCLCPP_INFO(
+      get_logger(),
+      "Configured cmd ids: send=0x%04x joint_state=0x%04x",
+      static_cast<unsigned int>(send_cmd_id_),
+      static_cast<unsigned int>(joint_state_cmd_id_));
     const int poll_timeout_param = static_cast<int>(declare_parameter<int>("poll_timeout_ms", 0));
     poll_timeout_ms_ = std::max(0, poll_timeout_param);
     publish_joint_state_from_usb_ = declare_parameter<bool>("publish_joint_state_from_usb", false);
@@ -74,10 +79,10 @@ public:
       torque_topic_, 50,
       std::bind(&MotorCommNode::on_torque_cmd, this, std::placeholders::_1));
 
-    rx_pub_ = create_publisher<std_msgs::msg::UInt8MultiArray>(rx_topic_, 50);
-    if (publish_joint_state_from_usb_) {
+    // rx_pub_ = create_publisher<std_msgs::msg::UInt8MultiArray>(rx_topic_, 50);
+    // if (publish_joint_state_from_usb_) {
       joint_state_pub_ = create_publisher<sensor_msgs::msg::JointState>(joint_state_topic_, 50);
-    }
+    // }
 
     send_timer_ = create_wall_timer(
       std::chrono::milliseconds(std::max(io_cycle_ms_, 1)),
@@ -87,7 +92,7 @@ public:
       std::cerr << "start receive thread failed: " << error << "\n";}
     RCLCPP_INFO(
       get_logger(),
-      "motor_comm_node started. torque_topic=%s rx_topic=%s joint_state_topic=%s publish_joint_state_from_usb=%s send_cmd_id=%u joint_state_cmd_id=%u serial_device=%s baud_rate=%d",
+      "motor_comm_node started. torque_topic=%s rx_topic=%s joint_state_topic=%s publish_joint_state_from_usb=%s send_cmd_id=0x%04x joint_state_cmd_id=0x%04x serial_device=%s baud_rate=%d",
       torque_topic_.c_str(), rx_topic_.c_str(),
       joint_state_topic_.c_str(), publish_joint_state_from_usb_ ? "true" : "false",
       static_cast<unsigned int>(send_cmd_id_),
@@ -193,16 +198,16 @@ private:
     rx.data.push_back(static_cast<uint8_t>(frame.cmdId & 0xFF));
     rx.data.push_back(static_cast<uint8_t>((frame.cmdId >> 8) & 0xFF));
     rx.data.insert(rx.data.end(), frame.payload.begin(), frame.payload.end());
-    rx_pub_->publish(rx);
+    // rx_pub_->publish(rx);
 
     if (publish_joint_state_from_usb_) {
       publish_joint_state_from_frame(frame);
     }
 
-    RCLCPP_INFO(
-      get_logger(),
-      "motor usb rx cmd=0x%04x len=%zu payload=[%s]",
-      frame.cmdId, frame.payload.size(), bytes_to_hex_string(frame.payload).c_str());
+    // RCLCPP_INFO(
+    //   get_logger(),
+    //   "motor usb rx cmd=0x%04x len=%zu payload=[%s]",
+    //   frame.cmdId, frame.payload.size(), bytes_to_hex_string(frame.payload).c_str());
   }
 
   bool decode_joint_state_payload(
@@ -229,10 +234,18 @@ private:
 
   void publish_joint_state_from_frame(const usb_host::ProtocolFrame & frame)
   {
+    
     if (!joint_state_pub_) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "joint_state_pub_ is null, skip publishing joint state");
       return;
     }
     if (frame.cmdId != joint_state_cmd_id_) {
+      RCLCPP_INFO(
+        get_logger(), 
+        "Received non-joint-state frame with cmdId=0x%04x, expected 0x%04x",
+        frame.cmdId, joint_state_cmd_id_);
       return;
     }
 
@@ -241,12 +254,12 @@ private:
     if (!decode_joint_state_payload(frame.payload, position, velocity)) {
       RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 2000,
-        "Failed to decode motor joint state frame. cmd=%u len=%zu expected_bytes=%zu",
+        "Failed to decode motor joint state frame. cmd=0x%04x len=%zu expected_bytes=%zu",
         static_cast<unsigned int>(frame.cmdId), frame.payload.size(),
         kJointStateFloatCount * sizeof(float));
       return;
     }
-
+    RCLCPP_INFO(get_logger(),"OK");
     sensor_msgs::msg::JointState msg;
     msg.header.stamp = now();
     msg.name = joint_names_;
@@ -273,7 +286,7 @@ private:
   bool has_pending_tx_ {false};
 
   rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr torque_sub_;
-  rclcpp::Publisher<std_msgs::msg::UInt8MultiArray>::SharedPtr rx_pub_;
+  // rclcpp::Publisher<std_msgs::msg::UInt8MultiArray>::SharedPtr rx_pub_;
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_pub_;
   rclcpp::TimerBase::SharedPtr send_timer_;
   std::string error;

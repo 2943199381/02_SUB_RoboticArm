@@ -19,7 +19,7 @@ public:
   TrajectoryBsplineJerkPlannerNode()
   : Node("trajectory_bspline_jerk_planner_node")
   {
-    planner_hz_ = std::max(1.0, declare_parameter<double>("planner_hz", 200.0));
+    planner_hz_ = std::max(1.0, declare_parameter<double>("planner_hz", 500.0));
     path_frame_ = declare_parameter<std::string>("path_frame", "base_link");
     path_marker_topic_ = declare_parameter<std::string>("path_marker_topic", "/planned_cartesian_curve");
     payload_attached_topic_ = declare_parameter<std::string>("payload_attached_topic", "/payload_attached");
@@ -953,8 +953,8 @@ private:
   }
 
 private:
-  double planner_hz_ {200.0};
-  double plan_dt_ {1.0 / 200.0};
+  double planner_hz_ {500.0};
+  double plan_dt_ {1.0 / 500.0};
   std::string path_frame_ {"base_link"};
   std::string path_marker_topic_ {"/planned_cartesian_curve"};
   std::string payload_attached_topic_ {"/payload_attached"};

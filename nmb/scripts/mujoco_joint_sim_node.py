@@ -54,7 +54,7 @@ class MujocoJointSimNode(Node):
             self.declare_parameter("payload_attach_distance_threshold_m", 0.03).value)
 
         # Timing parameters.
-        self.sim_hz = float(self.declare_parameter("sim_hz", 200.0).value)
+        self.sim_hz = float(self.declare_parameter("sim_hz", 500.0).value)
         self.max_substeps_per_tick = int(self.declare_parameter("max_substeps_per_tick", 32).value)
         self.max_elapsed_per_tick_sec = float(self.declare_parameter("max_elapsed_per_tick_sec", 0.1).value)
         self.viewer_sync_hz = float(self.declare_parameter("viewer_sync_hz", 60.0).value)

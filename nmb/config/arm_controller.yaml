@@ -7,7 +7,7 @@ arm_controller_node:
     pd_task_wrench_topic: /arm_pd_task_wrench
     task_frame_empty: ee_link
     task_frame_payload: payload_center_link
-    control_hz: 200.0
+    control_hz: 500.0
     initial_hold_q: [0.0, 0.0, 0.0, 0.0]
     kp_empty: [20.0, 20.0, 20.0, 0.5]
     kd_empty: [20.0, 20.0, 20.0, 0.05]

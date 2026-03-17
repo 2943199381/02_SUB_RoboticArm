@@ -1,6 +1,6 @@
 <mujoco model="02_SUB_RoboticArm">
   <compiler angle="radian" meshdir="./"/>
-  <option timestep="0.005"/>
+  <option timestep="0.002"/>
 
   <asset>
     <mesh name="base_link" file="base_link.STL"/>

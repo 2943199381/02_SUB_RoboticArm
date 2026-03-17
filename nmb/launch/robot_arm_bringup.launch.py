@@ -47,7 +47,7 @@ def generate_launch_description():
 
     use_mujoco_sim_arg = DeclareLaunchArgument(
         "use_mujoco_sim",
-        default_value="true",
+        default_value="false",
         description="Whether to run MuJoCo joint simulation node",
     )
 
@@ -177,7 +177,7 @@ def generate_launch_description():
             {
                 "model_path": LaunchConfiguration("mujoco_model_path"),
                 "dof": 4,
-                "sim_hz": 200.0,
+                "sim_hz": 500.0,
                 "joint_state_topic": "/joint_states",
                 "torque_topic": "/joint_torque_cmd",
                 "payload_attached_topic": "/payload_attached",

@@ -32,7 +32,7 @@ public:
   ArmControllerNode()
   : Node("arm_controller_node")
   {
-    control_hz_ = declare_parameter<double>("control_hz", 200.0);
+    control_hz_ = declare_parameter<double>("control_hz", 500.0);
     const auto legacy_kp_param = declare_parameter<std::vector<double>>(
       "kp", std::vector<double>{2.0, 2.0, 2.0, 0.0});
     const auto legacy_kd_param = declare_parameter<std::vector<double>>(
@@ -556,7 +556,7 @@ private:
 
     if (!has_planned_state_) {
       // desired_q_ = has_recorded_hold_q_ ? recorded_hold_q_ : initial_hold_q_;
-      desired_q_ = has_recorded_hold_q_ ? recorded_hold_q_ : q_;
+      desired_q_ = q_;
       desired_dq_.setZero();
       desired_ddq_.setZero();
     }
@@ -600,7 +600,7 @@ private:
   }
 
 private:
-  double control_hz_ {200.0};
+  double control_hz_ {500.0};
   Eigen::Vector4d kp_empty_ = Eigen::Vector4d::Zero();
   Eigen::Vector4d kd_empty_ = Eigen::Vector4d::Zero();
   Eigen::Vector4d kp_payload_ = Eigen::Vector4d::Zero();
