@@ -198,18 +198,12 @@ private:
 
   void on_joint_state(const sensor_msgs::msg::JointState::SharedPtr msg)
   {
-    const size_t npos = std::min(static_cast<size_t>(kDof), msg->position.size());
-    for (size_t i = 0; i < npos; ++i) {
+    recieve_q_ = true;
+    for (size_t i = 0; i < 4; ++i) {
       q_(static_cast<Eigen::Index>(i)) = msg->position[i];
-    }
-
-    const size_t nvel = std::min(static_cast<size_t>(kDof), msg->velocity.size());
-    for (size_t i = 0; i < nvel; ++i) {
       dq_(static_cast<Eigen::Index>(i)) = msg->velocity[i];
     }
-
-    has_joint_state_ = npos == static_cast<size_t>(kDof);
-    if (!has_recorded_hold_q_ && has_joint_state_) {
+    if (!has_recorded_hold_q_ ) {
       recorded_hold_q_ = q_;
       desired_q_ = recorded_hold_q_;
       desired_dq_.setZero();
@@ -227,15 +221,7 @@ private:
     const size_t npos = std::min(static_cast<size_t>(kDof), msg->position.size());
     for (size_t i = 0; i < npos; ++i) {
       desired_q_(static_cast<Eigen::Index>(i)) = msg->position[i];
-    }
-
-    const size_t nvel = std::min(static_cast<size_t>(kDof), msg->velocity.size());
-    for (size_t i = 0; i < nvel; ++i) {
       desired_dq_(static_cast<Eigen::Index>(i)) = msg->velocity[i];
-    }
-
-    const size_t nacc = std::min(static_cast<size_t>(kDof), msg->effort.size());
-    for (size_t i = 0; i < nacc; ++i) {
       desired_ddq_(static_cast<Eigen::Index>(i)) = msg->effort[i];
     }
 
@@ -552,6 +538,15 @@ private:
 
   void control_loop()
   {
+    if(!recieve_q_)
+    {
+      Eigen::Vector4d tau = Eigen::Vector4d::Zero();
+      publish_torque(tau);
+      return;
+    }
+    else
+    {
+      
     refresh_blend_state();
 
     if (!has_planned_state_) {
@@ -587,6 +582,7 @@ private:
     const Eigen::Vector4d tau = tau_pd + tau_model;
 
     publish_torque(tau);
+    }
   }
 
   void publish_torque(const Eigen::Vector4d & tau)
@@ -635,6 +631,7 @@ private:
   double blend_target_alpha_ {0.0};
   double blend_duration_sec_ {0.50};
   bool blend_active_ {false};
+  bool recieve_q_ {false};
   rclcpp::Time blend_start_time_;
 
 #if NMB_HAS_PINOCCHIO

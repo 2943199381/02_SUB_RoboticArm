@@ -24,18 +24,6 @@ constexpr uint16_t kDefaultJointStateCmdId = 0x0011;
 constexpr size_t kJointStateDof = 4;
 constexpr size_t kJointStateFloatCount = 8;
 
-std::string bytes_to_hex_string(const std::vector<uint8_t> & data)
-{
-  std::ostringstream oss;
-  oss << std::hex << std::setfill('0');
-  for (size_t i = 0; i < data.size(); ++i) {
-    if (i > 0U) {
-      oss << ' ';
-    }
-    oss << std::setw(2) << static_cast<int>(data[i]);
-  }
-  return oss.str();
-}
 
 }  // namespace
 
@@ -80,9 +68,9 @@ public:
       std::bind(&MotorCommNode::on_torque_cmd, this, std::placeholders::_1));
 
     // rx_pub_ = create_publisher<std_msgs::msg::UInt8MultiArray>(rx_topic_, 50);
-    // if (publish_joint_state_from_usb_) {
+    if (publish_joint_state_from_usb_) {
       joint_state_pub_ = create_publisher<sensor_msgs::msg::JointState>(joint_state_topic_, 50);
-    // }
+    }
 
     send_timer_ = create_wall_timer(
       std::chrono::milliseconds(std::max(io_cycle_ms_, 1)),
@@ -203,11 +191,6 @@ private:
     if (publish_joint_state_from_usb_) {
       publish_joint_state_from_frame(frame);
     }
-
-    // RCLCPP_INFO(
-    //   get_logger(),
-    //   "motor usb rx cmd=0x%04x len=%zu payload=[%s]",
-    //   frame.cmdId, frame.payload.size(), bytes_to_hex_string(frame.payload).c_str());
   }
 
   bool decode_joint_state_payload(
