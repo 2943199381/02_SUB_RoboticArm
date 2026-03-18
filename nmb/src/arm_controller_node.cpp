@@ -200,8 +200,8 @@ private:
   {
     recieve_q_ = true;
     for (size_t i = 0; i < 4; ++i) {
-      q_(static_cast<Eigen::Index>(i)) = msg->position[i];
-      dq_(static_cast<Eigen::Index>(i)) = msg->velocity[i];
+      q_(i) = msg->position[i];
+      dq_(i) = msg->velocity[i];
     }
     if (!has_recorded_hold_q_ ) {
       recorded_hold_q_ = q_;
@@ -218,11 +218,11 @@ private:
 
   void on_planned_joint_state(const sensor_msgs::msg::JointState::SharedPtr msg)
   {
-    const size_t npos = std::min(static_cast<size_t>(kDof), msg->position.size());
-    for (size_t i = 0; i < npos; ++i) {
-      desired_q_(static_cast<Eigen::Index>(i)) = msg->position[i];
-      desired_dq_(static_cast<Eigen::Index>(i)) = msg->velocity[i];
-      desired_ddq_(static_cast<Eigen::Index>(i)) = msg->effort[i];
+
+    for (size_t i = 0; i < 4; ++i) {
+      desired_q_(i) = msg->position[i];
+      desired_dq_(i) = msg->velocity[i];
+      desired_ddq_(i) = msg->effort[i];
     }
 
     has_planned_state_ = true;
