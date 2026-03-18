@@ -5,25 +5,17 @@ trajectory_bspline_jerk_planner_node:
     planner_hz: 500.0
     max_cartesian_speed_empty: 0.5
     max_cartesian_speed_payload: 0.35
-    max_cartesian_acceleration_accel_empty: 0.5
-    max_cartesian_acceleration_accel_payload: 0.35
-    max_cartesian_acceleration_decel_empty: 0.5
-    max_cartesian_acceleration_decel_payload: 0.35
-    max_cartesian_jerk_accel_empty: 5.0
-    max_cartesian_jerk_accel_payload: 3.5
-    max_cartesian_jerk_decel_empty: 2.5
-    max_cartesian_jerk_decel_payload: 1.8
+    max_cartesian_acceleration_empty: 0.5
+    max_cartesian_acceleration_payload: 0.35
+    max_cartesian_jerk_empty: 2.5
+    max_cartesian_jerk_payload: 1.8
 
     max_pitch_speed_empty: 0.5
     max_pitch_speed_payload: 0.35
-    max_pitch_acceleration_accel_empty: 0.5
-    max_pitch_acceleration_accel_payload: 0.35
-    max_pitch_acceleration_decel_empty: 0.5
-    max_pitch_acceleration_decel_payload: 0.35
-    max_pitch_jerk_accel_empty: 5.0
-    max_pitch_jerk_accel_payload: 3.5
-    max_pitch_jerk_decel_empty: 2.5
-    max_pitch_jerk_decel_payload: 1.8
+    max_pitch_acceleration_empty: 0.5
+    max_pitch_acceleration_payload: 0.35
+    max_pitch_jerk_empty: 2.5
+    max_pitch_jerk_payload: 1.8
 
     derivative_step: 0.002
     max_planning_steps: 60000

@@ -47,7 +47,7 @@ def generate_launch_description():
 
     use_mujoco_sim_arg = DeclareLaunchArgument(
         "use_mujoco_sim",
-        default_value="false",
+        default_value="true",
         description="Whether to run MuJoCo joint simulation node",
     )
 
